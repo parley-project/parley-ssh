@@ -654,8 +654,68 @@ public class SftpServer extends AbstractCommand {
 	}
 
 	private void realpath(int id, SshBuffer p) throws IOException {
-		String n = normalize(p.getStringUtf8());
-		send(name(id, n));
+		send(name(id, canonicalPath(p.getStringUtf8())));
+	}
+
+	/** As POSIX and OpenSSH's sftp-server: most links followed in one name */
+	private static final int MAX_LINKS = 40;
+
+	/**
+	 * The canonical path of a client's path, as OpenSSH's sftp-server answers REALPATH: "." and ".."
+	 * are resolved and so is every symbolic link, a component at a time, so ".." after a link is the
+	 * parent of where the link leads. A link that leads nowhere resolves to the name it points at. Only
+	 * the last component may be missing (so a client can ask for the path of a file it is about to
+	 * make); a missing directory before it is "no such file", as for OpenSSH, and so is a loop of links.
+	 * <p>
+	 * The answer is the client's path (the root is "/"). A link that leads outside the root is
+	 * "permission denied", which doesn't say where it points, and ".." can't climb above "/".
+	 */
+	private String canonicalPath(String path) throws IOException {
+		String rootCanonical = root.getCanonicalPath();
+		FileSource current = root;
+		int links = 0;
+		String slashed = path.replace('\\', '/');
+		Deque<String> todo = new ArrayDeque<String>(Arrays.asList(slashed.split("/")));
+		while( !todo.isEmpty() ) {
+			String seg = todo.pollFirst();
+			if( seg.isEmpty() || seg.equals(".") ) {
+				continue;
+			}
+			if( seg.equals("..") ) {
+				// the parent of where we really are, and never above the root
+				if( !current.getCanonicalPath().equals(rootCanonical) ) {
+					FileSource up = current.getParentFile();
+					if( up != null ) {
+						current = up;
+					}
+				}
+				continue;
+			}
+			FileSource next = current.getChild(seg);
+			// a link leads to a name, which may itself be a link
+			while( isLink(next) ) {
+				if( ++links > MAX_LINKS ) {
+					// what OpenSSH answers for a loop
+					throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
+				}
+				FileSource to = next.getLinkedTo();
+				if( to == null || !root.isChildOfMine(to) ) {
+					throw new Status(SftpConstants.SSH_FX_PERMISSION_DENIED, "Permission denied");
+				}
+				next = to;
+			}
+			// only the last component may be missing: "new" is fine, "new/file" and "new/" are not
+			boolean last = todo.isEmpty() && !slashed.endsWith("/");
+			if( !last && !next.exists() ) {
+				throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
+			}
+			current = next;
+		}
+		String virtual = virtualPath(current);
+		if( virtual == null ) {
+			throw new Status(SftpConstants.SSH_FX_PERMISSION_DENIED, "Permission denied");
+		}
+		return virtual;
 	}
 
 	// ------------------------------------------------------------------ links

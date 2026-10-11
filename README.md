@@ -49,7 +49,8 @@ read; OpenSSH and PKCS#8 files are written.
   and `ProcessShellFactory` run operating system commands, on a real pseudo terminal when pty4j is
   on the class path
 - Port forwarding (refused unless a forwarding filter allows it) and agent forwarding
-- SFTP versions 3 to 6 on any `FileSource`, which keeps each user inside their root
+- SFTP versions 3 to 6 on any `FileSource`, which keeps each user inside their root, also through
+  symbolic links (see [Links](#links-in-the-sftp-server))
 
 Requires Java 11 or later. Some features need more: Ed25519 needs Java 15, and SSH agents on Unix
 (and agent forwarding) need Java 16 (Unix domain sockets).
@@ -166,6 +167,59 @@ servers that block a thread per connection).
 whoever logged in.** Give `ProcessCommandFactory` and `ProcessShellFactory` only to users who may do
 anything that account can (with an access control list, they need the "exec" or "shell"
 permission).
+
+## Links in the SFTP server
+
+SFTP knows about links, so the server hides nothing: a client can see a link (`LSTAT`, a directory
+listing), read it (`READLINK`) and make one (`SYMLINK`, `LINK`, `hardlink@openssh.com`). What a link
+does is what it does on the file system under the user's root, because the server asks the root's
+`FileSource` for it (see [parley-files](https://github.com/tony-bringardner/parley-files#links) for what
+each file system supports).
+
+> This is a different model from the FTP server's in [parley-ftp](https://github.com/tony-bringardner/parley-ftp#links).
+> FTP has no idea of a link, so that server hides links from its clients and replaces a link when one is
+> written to. SFTP sees them, so a write goes through.
+
+| Request | What happens |
+|---|---|
+| `LSTAT`, a directory listing | A link is a link: the symbolic link type (`l` in a version 3 long name), size 0, mode `0777`. A link that leads nowhere is listed too. |
+| `STAT`, `FSTAT` | Follows the link: the type, size, times and permissions of what it leads to. A link that leads nowhere is "no such file". |
+| `OPEN`, `READ`, `WRITE`, `OPENDIR` | Follows the link. **A write changes the file it leads to** and the link stays a link. Through a linked directory it is the same (`/dirlink/new.txt` is made in the directory it leads to). |
+| `SETSTAT`, `FSETSTAT` | Applies to the file it leads to: truncate, mode and times. |
+| `REMOVE` | Removes the **link** only, also a link to a directory. What it led to is untouched. |
+| `RMDIR` | Refused for a link (use `REMOVE`). Version 3 has no "not a directory" status, so the client sees a plain failure. |
+| `RENAME`, `posix-rename` | Moves the **link**. What it led to is untouched. |
+| `REALPATH` | The canonical path, as OpenSSH's `sftp-server` answers it: `.` and `..` are resolved and **so is every link**, a component at a time (so `..` after a link is the parent of where the link leads). A link that leads nowhere resolves to the name it points at. Only the last component may be missing: a missing directory before it, and a loop of links, are "no such file". The answer is the client's path, and a link that leads outside the root is "permission denied". |
+| `READLINK` | The target, as the client's path (`/real.txt`, not the server's). A link that leads outside the root is "permission denied", which doesn't say where it points. |
+| `SYMLINK` (versions 3 to 5), `LINK` (version 6) | Makes a symbolic link, or a hard link if the request says so. The link must not exist and its target must be inside the root. OpenSSH sends the target first; for versions 4 and up, where the drafts differ, the one that doesn't exist is taken to be the link. |
+| `hardlink@openssh.com` | Makes a hard link to a file that exists. |
+| `MKDIR` on a link's name | "File exists". |
+
+### The root is a sandbox
+
+Every path a client uses is checked with `FileSource.isChildOfMine`, which compares canonical paths
+(links resolved), so nothing outside the user's root can be read, written or listed:
+
+- `..` stops at `/`.
+- A link that leads outside the root can be **seen** (`LSTAT`, a listing) and **removed or renamed**
+  (those act on the link), but not **followed**: `STAT`, `OPEN`, `OPENDIR` and `READLINK` through it
+  are "permission denied".
+- A link can't be made to a target outside the root, nor through a link that leads outside.
+- Error messages don't contain the server's real paths.
+
+There is **no setting** that lets a link lead outside the root, unlike the FTP server's
+`symlinkPolicy`. To share a directory with every user, make it part of each user's root (an
+`ISftpRootProvider` can build one) and don't link to it.
+
+### Read-only mode and other roots
+
+- `SftpSubsystemFactory.setReadOnly(true)` refuses every change: making, removing or renaming a link,
+  and writing through one (`Read-only`). Reading through a link still works.
+- A root can be any `FileSource`, and links follow that file system's rules. A memory file system root
+  has links; a root whose file system can't make them answers `SYMLINK` and `LINK` with a plain
+  failure (the server doesn't send the reason, which could hold a real path).
+
+These behaviors are tested in `SftpServerLinksTest` (and the sandbox in `SftpServerTest`).
 
 ## Shells
 

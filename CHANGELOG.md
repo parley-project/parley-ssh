@@ -67,6 +67,13 @@ version 6.
 - authorized_keys lines with options were skipped; the supported options are now used (see Added).
 - The default algorithm lists include the certificate and security key algorithms (after the
   plain ones; a client asks for certificates first for hosts whose CA it trusts).
+- **The SFTP server's `REALPATH` resolves symbolic links**, as OpenSSH's `sftp-server` does (it used to
+  tidy `.` and `..` and leave a link as it was). Components are resolved one at a time, so `..` after a
+  link is the parent of where the link leads; a link that leads nowhere resolves to the name it points
+  at; the answer is the client's path (the root is `/`). Only the last component may be missing: a missing
+  directory before it, and a loop of links, answer "no such file" (a missing directory used to be
+  accepted and left as written). A link that leads outside the root is "permission denied". `SftpServerLinksTest`
+  pins it, and every case was put to OpenSSH's `sftp-server`.
 
 ### Fixed
 

@@ -112,7 +112,13 @@ public class SftpServerTest {
 		try (SftpClient sftp = sftp()) {
 			assertTrue(sftp.hasExtension(SftpConstants.EXT_POSIX_RENAME));
 			assertEquals("/", sftp.realpath("."));
-			assertEquals("/a", sftp.realpath("/x/../a/./"));
+			sftp.mkdir("/a");
+			assertEquals("/a", sftp.realpath("/a/./"), "tidied");
+			assertEquals("/a/b", sftp.realpath("/a/b"), "the last component may be missing");
+			sftp.rmdir("/a");
+			// a missing directory in the middle is an error, as OpenSSH's REALPATH
+			SftpException missing = assertThrows(SftpException.class, () -> sftp.realpath("/x/../a/./"));
+			assertEquals(SftpConstants.SSH_FX_NO_SUCH_FILE, missing.getStatus());
 
 			sftp.mkdir("/docs");
 			byte[] data = new byte[3*1024*1024+5];
