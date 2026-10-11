@@ -885,14 +885,28 @@ public class SftpServer extends AbstractCommand {
 		// Version 4+: milliseconds, and the owner's names (there is no long name)
 		ret = ret.withTimes(Math.floorDiv(atimeMs, 1000), (int) Math.floorMod(atimeMs, 1000)*1000000,
 				Math.floorDiv(mtimeMs, 1000), (int) Math.floorMod(mtimeMs, 1000)*1000000);
+		String ownerName = null;
+		String groupName = null;
 		try {
 			UserPrincipal u = f.getOwner();
-			GroupPrincipal g = f.getGroup();
-			if( u != null && g != null ) {
-				ret = ret.withOwnerNames(u.getName(), g.getName());
+			if( u != null ) {
+				ownerName = u.getName();
 			}
 		} catch (IOException | RuntimeException e) {
 			// not known
+		}
+		try {
+			GroupPrincipal g = f.getGroup();
+			if( g != null ) {
+				groupName = g.getName();
+			}
+		} catch (IOException | RuntimeException e) {
+			// not known
+		}
+		if( ownerName != null ) {
+			//  A file system without groups (Windows) has no group to name: "-", as the ls -l
+			//  line does, so the owner is still given.
+			ret = ret.withOwnerNames(ownerName, groupName != null ? groupName : "-");
 		}
 		return ret;
 	}
