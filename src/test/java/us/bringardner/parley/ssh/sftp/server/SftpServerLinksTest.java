@@ -145,8 +145,10 @@ public class SftpServerLinksTest {
 			sftp.setStat("/link", SftpAttrs.NONE.withSize(4));
 			assertEquals(4, new File(root, "real.txt").length(), "truncated the original");
 			sftp.setStat("/link", SftpAttrs.NONE.withPermissions(0640));
-			assertEquals("rw-r-----", java.nio.file.attribute.PosixFilePermissions.toString(
-					Files.getPosixFilePermissions(new File(root, "real.txt").toPath())));
+			if( new File(root, "real.txt").toPath().getFileSystem().supportedFileAttributeViews().contains("posix") ) {
+				assertEquals("rw-r-----", java.nio.file.attribute.PosixFilePermissions.toString(
+						Files.getPosixFilePermissions(new File(root, "real.txt").toPath())));
+			}
 			assertTrue(Files.isSymbolicLink(new File(root, "link").toPath()));
 		}
 	}

@@ -42,7 +42,8 @@ public final class SftpVersionCheck {
 		SftpAttrs a = sftp.stat(dir+"/f.bin");
 		assertEquals(data.length, a.getSize(), at);
 		assertTrue(a.isRegularFile(), at+a);
-		if( v >= 4 ) {
+		//  MINA's SFTP server (exactCodes is false for it) sends no owner names on Windows
+		if( v >= 4 && (exactCodes || !System.getProperty("os.name", "").toLowerCase().startsWith("windows")) ) {
 			assertTrue(a.hasOwnerNames(), at+"owner names: "+a);
 			assertNotNull(a.getOwner(), at);
 		}

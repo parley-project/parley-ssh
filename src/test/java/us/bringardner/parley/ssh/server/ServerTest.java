@@ -438,8 +438,20 @@ public class ServerTest {
 		for (int i = 0; i < first.size(); i++) {
 			assertArrayEquals(SshPublicKeys.encode(first.get(i).getPublic()), SshPublicKeys.encode(again.get(i).getPublic()));
 		}
-		java.util.Set<java.nio.file.attribute.PosixFilePermission> perms = Files.getPosixFilePermissions(new File(keyDir, "ssh_host_rsa_key").toPath());
-		assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"), perms);
+		File privateKey = new File(keyDir, "ssh_host_rsa_key");
+		if( privateKey.toPath().getFileSystem().supportedFileAttributeViews().contains("posix") ) {
+			java.util.Set<java.nio.file.attribute.PosixFilePermission> perms = Files.getPosixFilePermissions(privateKey.toPath());
+			assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"), perms);
+		} else {
+			//  Windows: the ACL has the owner and nobody else
+			java.nio.file.attribute.AclFileAttributeView acl =
+					Files.getFileAttributeView(privateKey.toPath(), java.nio.file.attribute.AclFileAttributeView.class);
+			if( acl != null ) {
+				java.util.List<java.nio.file.attribute.AclEntry> entries = acl.getAcl();
+				assertEquals(1, entries.size(), "only the owner may have access: " + entries);
+				assertEquals(Files.getOwner(privateKey.toPath()), entries.get(0).principal());
+			}
+		}
 	}
 
 	/** zlib@openssh.com starts after the login, zlib at once; data goes through either way */
