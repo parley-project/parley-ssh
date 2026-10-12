@@ -106,6 +106,11 @@ public class SftpServerTest {
 		}
 	}
 
+	/** Windows has no POSIX owner, group and other permission bits. */
+	private static boolean windows() {
+		return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+	}
+
 	@Test
 	public void everyOperation() throws Exception {
 		File root = startOnDisk();
@@ -143,7 +148,10 @@ public class SftpServerTest {
 			assertEquals(10, new File(root, "docs/data.bin").length(), "truncate");
 			sftp.setStat("/docs/data.bin", SftpAttrs.NONE.withTimes(1_100_000_000L, 1_200_000_000L).withPermissions(0640));
 			assertEquals(1_200_000_000L, sftp.stat("/docs/data.bin").getModifyTime());
+			if( !windows() ) {
+			//  Windows has no owner, group and other bits to keep: the mode is not stored
 			assertEquals(0640, sftp.stat("/docs/data.bin").getPermissions() & 0777);
+		}
 
 			put(sftp, "/docs/other.txt", "o".getBytes(StandardCharsets.UTF_8));
 			SftpException e = assertThrows(SftpException.class, () -> sftp.rename("/docs/data.bin", "/docs/other.txt"));
@@ -459,7 +467,9 @@ public class SftpServerTest {
 			assertEquals(3, ls.size());
 			sftp.rename("jsch/f.bin", "jsch/g.bin");
 			sftp.chmod(0600, "jsch/g.bin");
+			if( !windows() ) {
 			assertEquals(0600, sftp.stat("jsch/g.bin").getPermissions() & 0777);
+		}
 			sftp.rm("jsch/g.bin");
 			sftp.rmdir("jsch");
 			sftp.disconnect();
