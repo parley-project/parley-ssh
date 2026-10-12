@@ -183,10 +183,9 @@ public class MinaInteropTest {
 			}
 			s.rekey().get(20, TimeUnit.SECONDS);
 			//  How many re-keys the load causes depends on how many packets queue during each exchange, so on
-			//  timing: Windows' loopback gets 6 or 7 where Linux gets 8 or more. One automatic re-key, after the
-			//  4 exchanges of the login, proves the feature.
-			int minKex = System.getProperty("os.name", "").toLowerCase().startsWith("windows") ? 5 : 8;
-			assertTrue(s.getKexCount() >= minKex, "automatic re-keys: "+s.getKexCount());
+			//  timing: usually 6 to 8 or more, depending on the machine. One automatic re-key, after the 4 exchanges
+			//  of the login and with the explicit one above, proves the feature.
+			assertTrue(s.getKexCount() >= 6, "automatic re-keys: "+s.getKexCount());
 			assertTrue(s.isOpen());
 			s.close();
 		}

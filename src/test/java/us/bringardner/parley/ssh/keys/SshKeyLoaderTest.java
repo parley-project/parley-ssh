@@ -95,6 +95,9 @@ public class SshKeyLoaderTest {
 				if( format != null ) {
 					args.add("-m");
 					args.add(format);
+				} else {
+					// OpenSSH's own format, the default only since 7.8
+					args.add("-o");
 				}
 				File plain = keygen(name, "", args.toArray(new String[0]));
 				check(plain, SshKeyLoader.load(plain, null));

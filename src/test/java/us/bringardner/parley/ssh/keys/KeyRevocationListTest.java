@@ -116,6 +116,8 @@ public class KeyRevocationListTest {
 
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-f", "keys.krl", "bad.pub"));
 		write("hashes", "hash: "+SshPublicKeys.fingerprint(byHash)+"\n");
+		write("probe", "hash: "+SshPublicKeys.fingerprint(good)+"\n");
+		assumeTrue(run("ssh-keygen", "-q", "-k", "-f", "probe.krl", "probe") == 0, "ssh-keygen before OpenSSH 7.9 has no hash: lines");
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-u", "-f", "keys.krl", "hashes"));
 		KeyRevocationList krl = KeyRevocationList.load(f("keys.krl"));
 		assertTrue(krl.isRevoked(bad), "explicit key");

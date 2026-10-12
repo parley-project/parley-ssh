@@ -85,6 +85,20 @@ public class SecurityKeyTest {
 		return p.exitValue();
 	}
 
+	/** Skips the test unless OpenSSH knows security keys (8.2 and later) */
+	private void assumeOpensshSecurityKeys() throws Exception {
+		Process p;
+		try {
+			p = new ProcessBuilder("ssh", "-Q", "key").redirectErrorStream(true).start();
+		} catch (java.io.IOException e) {
+			assumeTrue(false, "no ssh");
+			return;
+		}
+		String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+		assertTrue(p.waitFor(60, TimeUnit.SECONDS));
+		assumeTrue(out.contains("sk-ecdsa-sha2-nistp256@openssh.com"), "OpenSSH before 8.2 has no security keys");
+	}
+
 	@Test
 	public void keysAndSignatures() throws Exception {
 		for (boolean ed : types()) {
@@ -117,6 +131,7 @@ public class SecurityKeyTest {
 	/** ssh-keygen reads our security keys, and certifies them */
 	@Test
 	public void sshKeygenInterop() throws Exception {
+		assumeOpensshSecurityKeys();
 		assumeTrue(run("ssh-keygen", "-q", "-t", "ecdsa", "-N", "", "-f", "ca") == 0, "no ssh-keygen");
 		for (boolean ed : types()) {
 			KeyPair k = sk(ed, SkSignature.FLAG_USER_PRESENT);
@@ -229,6 +244,7 @@ public class SecurityKeyTest {
 	public void opensshServerAcceptsOurSignatures() throws Exception {
 		File exe = new File("/usr/sbin/sshd");
 		assumeTrue(exe.canExecute(), "no sshd");
+		assumeOpensshSecurityKeys();
 		assumeTrue(run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", "host") == 0, "no ssh-keygen");
 		assertEquals(0, run("ssh-keygen", "-q", "-t", "ecdsa", "-N", "", "-f", "ca"));
 		List<KeyPair> good = new ArrayList<KeyPair>();

@@ -74,7 +74,7 @@ public class SshAgentTest {
 		run(null, "ssh-keygen", "-q", "-s", "ca", "-I", "agent-cert", "-n", "alice", "id_cert.pub");
 		Map<String, String> env = Collections.singletonMap("SSH_AUTH_SOCK", socket);
 		// ssh-add adds id_cert-cert.pub too
-		run(env, "ssh-add", "-q", "id_ed25519", "id_rsa", "id_cert");
+		run(env, "ssh-add", "id_ed25519", "id_rsa", "id_cert");
 	}
 
 	@AfterAll

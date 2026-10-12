@@ -72,7 +72,7 @@ public class AgentForwardingTest {
 		assumeTrue(new File(socket).exists(), "ssh-agent didn't start");
 		key = new File(dir, "id_ed25519");
 		run(null, "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "forwarded-key", "-f", key.getPath());
-		run(Collections.singletonMap("SSH_AUTH_SOCK", socket), "ssh-add", "-q", key.getPath());
+		run(Collections.singletonMap("SSH_AUTH_SOCK", socket), "ssh-add", key.getPath());
 	}
 
 	@AfterAll
