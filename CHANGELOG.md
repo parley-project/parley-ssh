@@ -60,6 +60,8 @@ version 6.
 
 ### Changed (no code change needed)
 
+- `SshBuffer` keeps its bytes in parley-io's `WireBuffer` (shared with parley-dns); its API and
+  `SshException` on malformed data are unchanged. parley-io is now a direct dependency.
 - The SSH identification string is now `SSH-2.0-ParleySsh_1.0` (was `SSH-2.0-BjlSsh_1.0`).
 - New host key files are commented `parley-ssh host key`.
 - The OpenSSH integration tests read `parley.ssh.it.host` / `parley.ssh.it.port`
