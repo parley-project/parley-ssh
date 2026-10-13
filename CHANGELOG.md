@@ -60,6 +60,8 @@ version 6.
 
 ### Changed (no code change needed)
 
+- The EC point check and encoding (`SshPublicKeys.checkOnCurve`, `encodePoint`, `decodePoint`), the
+  ECDSA DER conversion and the Ed25519 DER prefixes now come from parley-core (`Ec`, `Der`); same API.
 - `SshBuffer` keeps its bytes in parley-io's `WireBuffer` (shared with parley-dns); its API and
   `SshException` on malformed data are unchanged. parley-io is now a direct dependency.
 - The SSH identification string is now `SSH-2.0-ParleySsh_1.0` (was `SSH-2.0-BjlSsh_1.0`).

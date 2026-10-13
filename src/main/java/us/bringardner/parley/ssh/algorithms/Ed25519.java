@@ -52,9 +52,9 @@ public final class Ed25519 {
 	public static final String SSH_ED25519 = "ssh-ed25519";
 
 	/** SubjectPublicKeyInfo header of an Ed25519 public key (OID 1.3.101.112), then 32 bytes */
-	private static final byte[] X509_PREFIX = {0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00};
+	private static final byte[] X509_PREFIX = us.bringardner.parley.core.util.Der.ED25519_SPKI_PREFIX;
 	/** PKCS#8 PrivateKeyInfo header of an Ed25519 private key, then the 32 byte seed */
-	private static final byte[] PKCS8_PREFIX = {0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20};
+	private static final byte[] PKCS8_PREFIX = us.bringardner.parley.core.util.Der.ED25519_PKCS8_PREFIX;
 
 	private static final boolean SUPPORTED;
 
