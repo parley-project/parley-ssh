@@ -25,11 +25,13 @@
  */
 package us.bringardner.parley.ssh.client;
 
+import java.io.IOException;
 import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
 /**
@@ -74,6 +76,64 @@ public final class HostKeyVerifiers {
 					types[i] = SshPublicKeys.keyType(trusted.get(i));
 				}
 				return Collections.unmodifiableList(Arrays.asList(types));
+			}
+		};
+	}
+
+	/**
+	 * Looks a host key up somewhere outside the client, e.g. in DNS (SSHFP records):
+	 * parley-dns's {@code SshfpVerifier} fits, without parley-ssh depending on it.
+	 */
+	@FunctionalInterface
+	public interface IHostKeyLookup {
+		/**
+		 * @param host the host name as given to connect
+		 * @param keyBlob the host key in SSH wire form
+		 * @return TRUE if the source vouches for the key, FALSE if it says the key is wrong,
+		 *  null if it knows nothing (no records, not secure, unavailable)
+		 */
+		Boolean check(String host, byte[] keyBlob) throws IOException;
+	}
+
+	/**
+	 * Checks a host key with a lookup first (RFC 4255: VerifyHostKeyDNS): a key the lookup
+	 * vouches for is trusted; one it says is wrong is refused; otherwise the fallback
+	 * (known_hosts, a user prompt...) decides. Certificates and the known key types are the
+	 * fallback's.
+	 * <p>
+	 * With parley-dns and a validating resolver:
+	 * <pre>
+	 * HostKeyVerifiers.withLookup((host, blob) -&gt; {
+	 *     switch( SshfpVerifier.verify(host, blob) ) {
+	 *     case MATCH: return Boolean.TRUE;
+	 *     case MISMATCH: case BOGUS: return Boolean.FALSE;
+	 *     default: return null;
+	 *     }
+	 * }, knownHosts);
+	 * </pre>
+	 */
+	public static IHostKeyVerifier withLookup(IHostKeyLookup lookup, IHostKeyVerifier fallback) {
+		if( lookup == null || fallback == null ) {
+			throw new IllegalArgumentException("lookup and fallback are required");
+		}
+		return new IHostKeyVerifier() {
+			@Override
+			public boolean verify(String host, int port, PublicKey key) throws IOException {
+				Boolean r = lookup.check(host, SshPublicKeys.encode(key));
+				if( r != null ) {
+					return r;
+				}
+				return fallback.verify(host, port, key);
+			}
+
+			@Override
+			public List<String> getKnownKeyTypes(String host, int port) {
+				return fallback.getKnownKeyTypes(host, port);
+			}
+
+			@Override
+			public boolean verifyCertificate(String host, int port, SshCertificate certificate) throws IOException {
+				return fallback.verifyCertificate(host, port, certificate);
 			}
 		};
 	}
