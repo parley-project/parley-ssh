@@ -25,7 +25,6 @@
  */
 package us.bringardner.parley.ssh.algorithms;
 
-import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
@@ -33,6 +32,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
 
+import us.bringardner.parley.core.util.Ec;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshException;
 
@@ -110,77 +110,13 @@ public class EcdsaSignature implements ISignatureAlgorithm {
 
 	// ------------------------------------------------------------------ DER SEQUENCE { INTEGER r, INTEGER s }
 
+	/** @see Ec#signatureToDer(BigInteger, BigInteger) */
 	static byte[] toDer(BigInteger r, BigInteger s) {
-		byte[] rb = r.toByteArray();
-		byte[] sb = s.toByteArray();
-		ByteArrayOutputStream body = new ByteArrayOutputStream();
-		derItem(body, 0x02, rb);
-		derItem(body, 0x02, sb);
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		derItem(out, 0x30, body.toByteArray());
-		return out.toByteArray();
+		return Ec.signatureToDer(r, s);
 	}
 
-	private static void derItem(ByteArrayOutputStream out, int tag, byte[] value) {
-		out.write(tag);
-		int len = value.length;
-		if( len < 128 ) {
-			out.write(len);
-		} else if( len < 256 ) {
-			out.write(0x81);
-			out.write(len);
-		} else {
-			out.write(0x82);
-			out.write(len >>> 8);
-			out.write(len);
-		}
-		out.write(value, 0, value.length);
-	}
-
+	/** @see Ec#signatureFromDer(byte[]) */
 	static BigInteger[] fromDer(byte[] der) throws GeneralSecurityException {
-		int[] pos = {0};
-		if( der.length < 2 || (der[pos[0]++] & 0xff) != 0x30 ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		int seqLen = derLength(der, pos);
-		if( pos[0]+seqLen != der.length ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		BigInteger r = derInteger(der, pos);
-		BigInteger s = derInteger(der, pos);
-		return new BigInteger[] {r, s};
-	}
-
-	private static BigInteger derInteger(byte[] der, int[] pos) throws GeneralSecurityException {
-		if( pos[0] >= der.length || (der[pos[0]++] & 0xff) != 0x02 ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		int len = derLength(der, pos);
-		if( len <= 0 || pos[0]+len > der.length ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		byte[] v = new byte[len];
-		System.arraycopy(der, pos[0], v, 0, len);
-		pos[0] += len;
-		return new BigInteger(v);
-	}
-
-	private static int derLength(byte[] der, int[] pos) throws GeneralSecurityException {
-		if( pos[0] >= der.length ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		int b = der[pos[0]++] & 0xff;
-		if( b < 128 ) {
-			return b;
-		}
-		int n = b & 0x7f;
-		if( n < 1 || n > 2 || pos[0]+n > der.length ) {
-			throw new GeneralSecurityException("Bad ECDSA signature");
-		}
-		int len = 0;
-		for (int i = 0; i < n; i++) {
-			len = (len << 8) | (der[pos[0]++] & 0xff);
-		}
-		return len;
+		return Ec.signatureFromDer(der);
 	}
 }

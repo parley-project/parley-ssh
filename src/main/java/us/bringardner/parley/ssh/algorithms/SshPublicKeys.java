@@ -29,12 +29,12 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.AlgorithmParameters;
 import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
-import java.security.spec.ECFieldFp;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPoint;
@@ -43,6 +43,7 @@ import java.security.spec.RSAPublicKeySpec;
 import java.util.Arrays;
 import java.util.Base64;
 
+import us.bringardner.parley.core.util.Ec;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshException;
 
@@ -272,56 +273,28 @@ public final class SshPublicKeys {
 	 * @return the uncompressed point encoding (SEC1): 0x04 || x || y, each the field size
 	 */
 	public static byte[] encodePoint(ECPoint w, ECParameterSpec params) {
-		int size = (params.getCurve().getField().getFieldSize()+7)/8;
-		byte[] ret = new byte[1+2*size];
-		ret[0] = 4;
-		unsigned(w.getAffineX(), ret, 1, size);
-		unsigned(w.getAffineY(), ret, 1+size, size);
-		return ret;
+		return Ec.encodePoint(w, params);
 	}
 
 	/**
 	 * @return the point, checked to be on the curve (an invalid point is a known attack on ECDH)
 	 */
 	public static ECPoint decodePoint(byte[] data, ECParameterSpec params) throws SshException {
-		int size = (params.getCurve().getField().getFieldSize()+7)/8;
-		if( data.length != 1+2*size || data[0] != 4 ) {
-			throw new SshException("Invalid EC point (only uncompressed points are supported)");
+		try {
+			return Ec.decodePoint(data, params);
+		} catch (InvalidKeyException e) {
+			throw new SshException(e.getMessage());
 		}
-		BigInteger x = new BigInteger(1, Arrays.copyOfRange(data, 1, 1+size));
-		BigInteger y = new BigInteger(1, Arrays.copyOfRange(data, 1+size, data.length));
-		ECPoint ret = new ECPoint(x, y);
-		checkOnCurve(ret, params);
-		return ret;
 	}
 
 	/**
 	 * @throws SshException unless y^2 = x^3 + ax + b (mod p) with x and y in the field
 	 */
 	public static void checkOnCurve(ECPoint w, ECParameterSpec params) throws SshException {
-		BigInteger p = ((ECFieldFp) params.getCurve().getField()).getP();
-		BigInteger x = w.getAffineX();
-		BigInteger y = w.getAffineY();
-		if( x.signum() < 0 || x.compareTo(p) >= 0 || y.signum() < 0 || y.compareTo(p) >= 0 ) {
-			throw new SshException("EC point is outside the field");
+		try {
+			Ec.checkOnCurve(w, params);
+		} catch (InvalidKeyException e) {
+			throw new SshException(e.getMessage());
 		}
-		BigInteger left = y.multiply(y).mod(p);
-		BigInteger right = x.pow(3).add(params.getCurve().getA().multiply(x)).add(params.getCurve().getB()).mod(p);
-		if( !left.equals(right) ) {
-			throw new SshException("EC point is not on the curve");
-		}
-	}
-
-	/**
-	 * Write v as exactly len unsigned big endian bytes.
-	 */
-	static void unsigned(BigInteger v, byte[] out, int off, int len) {
-		byte[] b = v.toByteArray();
-		int start = (b.length > len && b[0] == 0) ? 1 : 0;
-		int n = b.length-start;
-		if( n > len ) {
-			throw new IllegalArgumentException("Value too large for "+len+" bytes");
-		}
-		System.arraycopy(b, start, out, off+len-n, n);
 	}
 }
