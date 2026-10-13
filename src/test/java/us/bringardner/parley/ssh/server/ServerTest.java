@@ -242,8 +242,23 @@ public class ServerTest {
 		server.setLoginTimeLimit(500);
 		server.startAndWait(5000);
 		ClientSession s = connect(null);
-		Thread.sleep(1500);
+		//  the limit is the connection's deadline, checked about once a second
+		long end = System.currentTimeMillis()+3000;
+		while( s.isOpen() && System.currentTimeMillis() < end ) {
+			Thread.sleep(50);
+		}
 		assertFalse(s.isOpen(), "not logged in within the time limit");
+	}
+
+	@Test
+	public void loggingInInTimeClearsTheTimeLimit() throws Exception {
+		start();
+		server.setLoginTimeLimit(500);
+		server.startAndWait(5000);
+		ClientSession s = connect(null);
+		s.authenticateAndWait("alice", new PasswordAuth("secret"));
+		Thread.sleep(2000);
+		assertTrue(s.isOpen(), "a logged in session outlived the login time limit");
 	}
 
 	@Test
