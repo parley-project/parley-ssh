@@ -34,7 +34,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import us.bringardner.parley.net.nio.INioConnection;
@@ -67,7 +66,6 @@ public class ServerSession extends SshTransport {
 	private volatile boolean authenticated;
 	private volatile String user;
 	private volatile IPrincipal principal;
-	private volatile ScheduledFuture<?> loginTimer;
 
 	// user authentication, on the handler thread
 	private boolean userAuthAccepted;
@@ -202,12 +200,16 @@ public class ServerSession extends SshTransport {
 		super.onConnect(c);
 		long grace = server.getLoginTimeLimit();
 		if( grace > 0 ) {
-			loginTimer = server.getScheduler().schedule(() -> {
-				if( !authenticated ) {
-					logDebug("Login time limit reached for "+c.getRemoteAddress());
-					disconnect(SshConstants.SSH_DISCONNECT_BY_APPLICATION, "Login time limit reached");
-				}
-			}, grace, TimeUnit.MILLISECONDS);
+			//  LoginGraceTime, on the connection's deadline (cleared when the user logs in)
+			c.setDeadline(grace);
+		}
+	}
+
+	@Override
+	public void onDeadline(INioConnection c) throws Exception {
+		if( !authenticated ) {
+			logDebug("Login time limit reached for "+c.getRemoteAddress());
+			disconnect(SshConstants.SSH_DISCONNECT_BY_APPLICATION, "Login time limit reached");
 		}
 	}
 
@@ -296,10 +298,6 @@ public class ServerSession extends SshTransport {
 
 	@Override
 	protected void onClosed(Throwable reason) {
-		ScheduledFuture<?> t = loginTimer;
-		if( t != null ) {
-			t.cancel(false);
-		}
 		connection.closeAll(reason);
 		forwarding.close();
 		agentForwarding.close();
@@ -382,10 +380,7 @@ public class ServerSession extends SshTransport {
 			principal = r.getPrincipal();
 			authenticated = true;
 			getConnection().setPrincipal(principal);
-			ScheduledFuture<?> t = loginTimer;
-			if( t != null ) {
-				t.cancel(false);
-			}
+			getConnection().clearDeadline();
 			logInfo("User "+name+" logged in with "+m.getName()+" from "+getConnection().getRemoteAddress());
 			send(SshBuffer.message(SshConstants.SSH_MSG_USERAUTH_SUCCESS));
 			startDelayedCompression();
