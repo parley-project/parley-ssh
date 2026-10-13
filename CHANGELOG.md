@@ -9,6 +9,9 @@ version 6.
 
 ### Added
 
+- `HostKeyVerifiers.withLookup(lookup, fallback)`: check a host key with an outside source first
+  (RFC 4255 VerifyHostKeyDNS), e.g. parley-dns's `SshfpVerifier`, then the fallback (known_hosts...).
+  parley-ssh does not depend on parley-dns.
 - **OpenSSH certificates** (`SshCertificate`): user certificates (client `PublicKeyAuth.addCertificate`,
   server `UserCertificateAuthenticator` with trusted CA keys and optional principals) and host
   certificates (servers use `*-cert.pub` next to their keys; clients trust `@cert-authority` lines
