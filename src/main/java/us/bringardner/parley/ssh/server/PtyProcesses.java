@@ -69,15 +69,51 @@ final class PtyProcesses {
 	 * @return the process, with stdout and stderr both on the terminal (its input stream)
 	 */
 	static Process start(List<String> command, Map<String, String> env, File directory, int columns, int rows) throws IOException {
-		PtyProcessBuilder b = new PtyProcessBuilder(command.toArray(new String[0]))
+		int c = columns > 0 ? columns : 80;
+		int r = rows > 0 ? rows : 24;
+		PtyProcessBuilder b = new PtyProcessBuilder(sizedCommand(command, c, r))
 				.setEnvironment(env)
-				.setInitialColumns(columns > 0 ? columns : 80)
-				.setInitialRows(rows > 0 ? rows : 24)
+				.setInitialColumns(c)
+				.setInitialRows(r)
 				.setRedirectErrorStream(true);
 		if( directory != null ) {
 			b.setDirectory(directory.getPath());
 		}
 		return b.start();
+	}
+
+	/**
+	 * pty4j sets the terminal's initial size after the process has started (on Linux, at
+	 * least with 0.14), so a command that asks for the size at once ("stty size", a
+	 * full-screen program) can see 0 x 0. Where /bin/sh and stty exist, the command is
+	 * started through "sh -c 'stty rows R cols C; exec \"$@\"'", which sets the size on
+	 * the terminal itself before the command runs; exec replaces the shell, so the
+	 * process is the command, as before.
+	 */
+	static String[] sizedCommand(List<String> command, int columns, int rows) {
+		if( !STTY_WRAPPER || command.isEmpty() ) {
+			return command.toArray(new String[0]);
+		}
+		List<String> ret = new java.util.ArrayList<String>();
+		ret.add("/bin/sh");
+		ret.add("-c");
+		ret.add("stty rows "+rows+" cols "+columns+" 2>/dev/null; exec \"$@\"");
+		ret.add("sh");
+		ret.addAll(command);
+		return ret.toArray(new String[0]);
+	}
+
+	//  Unix with /bin/sh and stty: the size is set before the command runs
+	private static final boolean STTY_WRAPPER = !System.getProperty("os.name", "").toLowerCase().contains("win")
+			&& new File("/bin/sh").canExecute() && hasStty();
+
+	private static boolean hasStty() {
+		for(String dir : new String[] {"/bin", "/usr/bin"}) {
+			if( new File(dir, "stty").canExecute() ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static void resize(Process p, int columns, int rows) {

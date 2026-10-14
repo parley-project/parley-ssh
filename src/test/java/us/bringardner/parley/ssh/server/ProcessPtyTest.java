@@ -158,4 +158,15 @@ public class ProcessPtyTest {
 			server.setPublicKeyAuthenticator(old);
 		}
 	}
+
+	/** The size wrapper keeps the command's arguments as they are (spaces, quotes, $). */
+	@Test
+	public void theSizeWrapperKeepsTheArguments() throws Exception {
+		java.util.List<String> cmd = java.util.Arrays.asList("printf", "%s|", "a b", "'q'", "$HOME");
+		String[] w = PtyProcesses.sizedCommand(cmd, 100, 30);
+		Process p = new ProcessBuilder(w).redirectErrorStream(true).start();
+		String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+		p.waitFor(10, TimeUnit.SECONDS);
+		assertEquals("a b|'q'|$HOME|", out.replaceAll("^.*?(a b)", "$1"));
+	}
 }
