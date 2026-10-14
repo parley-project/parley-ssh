@@ -84,6 +84,9 @@ version 6.
 
 ### Fixed
 
+- A command run on a pty could see a 0 x 0 terminal: pty4j sets the initial size after the process has
+  started. Where `/bin/sh` and `stty` exist, the command now starts through `sh -c 'stty rows R cols C;
+  exec "$@"'`, so the size is set before it runs (the process is still the command itself).
 - Port forwarding sometimes lost the end of the data (about half the time with several large
   transfers at once): when the far side closed the channel, the local socket was closed before
   the data already received had been written to it.
