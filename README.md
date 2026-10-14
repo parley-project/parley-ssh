@@ -30,7 +30,8 @@ read; OpenSSH and PKCS#8 files are written.
 - Login with password, keyboard-interactive, public keys, OpenSSH certificates, or the keys of an
   SSH agent (`ssh-agent`, OpenSSH's Windows agent, PuTTY's Pageant)
 - Host keys checked against `known_hosts` (hashed names, wildcards, `@revoked`, `@cert-authority`
-  for host certificates) and key revocation lists
+  for host certificates) and key revocation lists, optionally after a DNS lookup of the host's SSHFP
+  records (`HostKeyVerifiers.withLookup`, with parley-dns)
 - exec, shells with a pseudo terminal, subsystems, local and remote port forwarding (`-L`, `-R`),
   agent forwarding (`-A`), keep-alives
 - SFTP versions 3 to 6, with several reads and writes in flight
@@ -95,6 +96,24 @@ try (SshClient client = new SshClient()) {
 
 `new PublicKeyAuth(SshKeyLoader.load(file, passphrase))` logs in with a key file, and
 `addCertificate(key, SshCertificate.load(certFile))` adds its certificate.
+
+**Host keys in DNS (SSHFP).** `HostKeyVerifiers.withLookup(lookup, fallback)` asks a lookup first
+(OpenSSH's `VerifyHostKeyDNS`): `TRUE` trusts the key, `FALSE` refuses it, `null` (no records, not
+secure, unavailable) leaves it to the fallback, such as `known_hosts`. parley-ssh doesn't depend on
+parley-dns; with it on the class path and a validating resolver (`-DJDns.dnssecValidation=true`):
+
+```java
+client.setHostKeyVerifier(HostKeyVerifiers.withLookup((host, blob) -> {
+    switch (SshfpVerifier.verify(host, blob)) {
+        case MATCH: return Boolean.TRUE;
+        case MISMATCH: case BOGUS: return Boolean.FALSE;
+        default: return null;                         // NO_RECORDS, INSECURE, TEMPFAIL
+    }
+}, KnownHosts.userFile()));
+```
+
+Only a DNSSEC-validated answer proves anything, so `SshfpVerifier` reports unsigned answers as
+`INSECURE`. parley-dns's `SshfpTool` prints the records to publish for a server's keys.
 
 ## Server
 
