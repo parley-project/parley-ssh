@@ -112,9 +112,25 @@ public class OpenSshCertificateIT {
 		return new String[] {""+p.exitValue(), out};
 	}
 
+	/**
+	 * The user keys to try. RSA certificates are signed with rsa-sha2-*-cert-v01@openssh.com, which
+	 * OpenSSH has since 7.8: an older ssh offers only SHA-1 and an older sshd doesn't know them.
+	 */
+	private static String[] userKeys() throws Exception {
+		Process p = new ProcessBuilder("ssh", "-V").redirectErrorStream(true).start();
+		String v = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+		assertTrue(p.waitFor(30, TimeUnit.SECONDS));
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("OpenSSH_(\\d+)\\.(\\d+)").matcher(v);
+		boolean sha2Certs = m.find() && (Integer.parseInt(m.group(1)) > 7 || (Integer.parseInt(m.group(1)) == 7 && Integer.parseInt(m.group(2)) >= 8));
+		if( !sha2Certs ) {
+			System.out.println("RSA certificates skipped: "+v.trim()+" has no rsa-sha2 certificate signatures (OpenSSH 7.8)");
+		}
+		return sha2Certs ? new String[] {"user_ed25519", "user_rsa"} : new String[] {"user_ed25519"};
+	}
+
 	@Test
 	public void opensshClientWithCertificates() throws Exception {
-		for (String key : new String[] {"user_ed25519", "user_rsa"}) {
+		for (String key : userKeys()) {
 			String[] r = ssh(key, "whoami");
 			assertEquals("0", r[0], key+": "+r[1]);
 			assertEquals("alice", r[1], key);
@@ -186,7 +202,7 @@ public class OpenSshCertificateIT {
 	@Test
 	public void ourClientWithOpenSshServer() throws Exception {
 		startSshd();
-		for (String key : new String[] {"user_ed25519", "user_rsa"}) {
+		for (String key : userKeys()) {
 			try (SshClient client = new SshClient()) {
 				client.setHostKeyVerifier(new KnownHosts(Collections.singletonList(
 						"@cert-authority [127.0.0.1]:"+sshdPort+" "+new String(Files.readAllBytes(f("ca.pub").toPath()), StandardCharsets.UTF_8).trim())));

@@ -66,8 +66,20 @@ public class OpenSshIT {
 	public void defaults() throws Exception {
 		ClientSession s = connect(null);
 		assertTrue(s.getPeerVersion().contains("OpenSSH"), s.getPeerVersion());
-		assertTrue(s.isStrictKex(), "OpenSSH 9.6+ does strict key exchange");
+		if( atLeast(s.getPeerVersion(), 9, 6) ) {
+			assertTrue(s.isStrictKex(), "OpenSSH 9.6+ does strict key exchange");
+		}
 		assertTrue(s.getKexCount() >= 1);
+	}
+
+	/** @return true if an "SSH-2.0-OpenSSH_7.4" version is major.minor or later */
+	static boolean atLeast(String peerVersion, int major, int minor) {
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("OpenSSH_(\\d+)\\.(\\d+)").matcher(peerVersion);
+		if( !m.find() ) {
+			return false;
+		}
+		int ma = Integer.parseInt(m.group(1));
+		return ma > major || (ma == major && Integer.parseInt(m.group(2)) >= minor);
 	}
 
 	/** Each of our algorithms that the server also has; the server decides which those are */

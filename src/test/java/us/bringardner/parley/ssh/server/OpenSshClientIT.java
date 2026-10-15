@@ -229,7 +229,8 @@ public class OpenSshClientIT {
 		File saved = key;
 		key = edKey;
 		try {
-			Result r = ssh(null, "whoami", "PubkeyAcceptedAlgorithms=ssh-ed25519");
+			// The name before OpenSSH 8.5 (PubkeyAcceptedAlgorithms since); newer versions still take it
+			Result r = ssh(null, "whoami", "PubkeyAcceptedKeyTypes=ssh-ed25519");
 			assertEquals(0, r.exit, r.err);
 			assertEquals("alice", new String(r.out, StandardCharsets.UTF_8));
 		} finally {
