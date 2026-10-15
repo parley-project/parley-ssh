@@ -192,10 +192,10 @@ permission).
 SFTP knows about links, so the server hides nothing: a client can see a link (`LSTAT`, a directory
 listing), read it (`READLINK`) and make one (`SYMLINK`, `LINK`, `hardlink@openssh.com`). What a link
 does is what it does on the file system under the user's root, because the server asks the root's
-`FileSource` for it (see [parley-files](https://github.com/tony-bringardner/parley-files#links) for what
+`FileSource` for it (see [parley-files](https://github.com/parley-project/parley-files#links) for what
 each file system supports).
 
-> This is a different model from the FTP server's in [parley-ftp](https://github.com/tony-bringardner/parley-ftp#links).
+> This is a different model from the FTP server's in [parley-ftp](https://github.com/parley-project/parley-ftp#links).
 > FTP has no idea of a link, so that server hides links from its clients and replaces a link when one is
 > written to. SFTP sees them, so a write goes through.
 
