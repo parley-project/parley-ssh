@@ -98,14 +98,12 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 		final String[] patterns;
 		final String keyType;
 		final byte[] blob;
-		final String line;
 
-		Entry(String marker, String[] patterns, String keyType, byte[] blob, String line) {
+		Entry(String marker, String[] patterns, String keyType, byte[] blob) {
 			this.marker = marker;
 			this.patterns = patterns;
 			this.keyType = keyType;
 			this.blob = blob;
-			this.line = line;
 		}
 	}
 
@@ -210,7 +208,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 				logDebug("Skipping known_hosts line with bad base64: "+line);
 				continue;
 			}
-			ret.add(new Entry(marker, parts[i].split(","), parts[i+1], blob, line));
+			ret.add(new Entry(marker, parts[i].split(","), parts[i+1], blob));
 		}
 		return Collections.unmodifiableList(ret);
 	}

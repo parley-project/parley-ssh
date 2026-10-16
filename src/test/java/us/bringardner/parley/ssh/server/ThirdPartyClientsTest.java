@@ -78,7 +78,7 @@ public class ThirdPartyClientsTest {
 	private static Session jsch(String... config) throws Exception {
 		JSch j = new JSch();
 		Session s = j.getSession("alice", "localhost", server.getLocalPort());
-		s.setPassword("secret");
+		s.setPassword("secret".getBytes(StandardCharsets.UTF_8));
 		s.setConfig("StrictHostKeyChecking", "no");
 		s.setConfig("PreferredAuthentications", "password");
 		for (int i = 0; i < config.length; i += 2) {
@@ -183,7 +183,7 @@ public class ThirdPartyClientsTest {
 		ki.disconnect();
 
 		Session bad = new JSch().getSession("alice", "localhost", server.getLocalPort());
-		bad.setPassword("wrong");
+		bad.setPassword("wrong".getBytes(StandardCharsets.UTF_8));
 		bad.setConfig("StrictHostKeyChecking", "no");
 		bad.setConfig("PreferredAuthentications", "password");
 		assertThrows(com.jcraft.jsch.JSchException.class, () -> bad.connect(15000));

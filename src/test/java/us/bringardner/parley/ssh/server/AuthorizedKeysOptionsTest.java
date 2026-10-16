@@ -42,7 +42,6 @@ public class AuthorizedKeysOptionsTest {
 	private SshClient client;
 	private File keys;
 
-	private static final long NOW = System.currentTimeMillis()/1000;
 
 	@AfterEach
 	public void stop() throws Exception {

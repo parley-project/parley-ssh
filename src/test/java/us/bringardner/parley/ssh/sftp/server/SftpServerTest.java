@@ -448,7 +448,7 @@ public class SftpServerTest {
 	public void jschSftpClient() throws Exception {
 		File root = startOnDisk();
 		Session s = new JSch().getSession("alice", "localhost", server.getLocalPort());
-		s.setPassword("secret");
+		s.setPassword("secret".getBytes(StandardCharsets.UTF_8));
 		s.setConfig("StrictHostKeyChecking", "no");
 		s.connect(15000);
 		try {
