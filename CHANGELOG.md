@@ -1,6 +1,6 @@
 # Changelog
 
-## parley-ssh 1.0.0 (unreleased)
+## parley-ssh 1.0.0 (2026-10-16)
 
 BjlSsh (`us.bringardner:bjl_net_ssh` 1.0.0-SNAPSHOT, never released) is now **parley-ssh**, part of
 the Parley library family. Besides the new names (below), it adds what OpenSSH users expect:
