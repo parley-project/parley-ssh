@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -186,6 +187,19 @@ public class SftpServerTest {
 	}
 
 	/** Nothing outside the root, by ".." or by a link */
+	@Test
+	public void writingAfterCloseFails() throws Exception {
+		startOnDisk();
+		try (SftpClient sftp = sftp()) {
+			OutputStream out = sftp.write("/closed.bin", false);
+			out.write(1);
+			out.close();
+			assertThrows(IOException.class, () -> out.write(2), "a byte after close");
+			assertThrows(IOException.class, () -> out.write(new byte[] {3}, 0, 1), "an array after close");
+			out.close(); // a second close does nothing
+		}
+	}
+
 	@Test
 	public void theRootIsASandbox() throws Exception {
 		File root = startOnDisk();

@@ -72,6 +72,9 @@ public class SftpOutputStream extends OutputStream {
 
 	@Override
 	public void write(int b) throws IOException {
+		if( closed ) {
+			throw new IOException("Stream closed");
+		}
 		if( count == buffer.length ) {
 			send(buffer, 0, count);
 			count = 0;
