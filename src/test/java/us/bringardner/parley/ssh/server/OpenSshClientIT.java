@@ -193,9 +193,9 @@ public class OpenSshClientIT {
 		java.nio.file.Files.write(batch.toPath(), String.join("\n",
 				"mkdir docs",
 				"cd docs",
-				"put "+local.getPath()+" up.bin",
+				"put "+local.getPath().replace('\\', '/')+" up.bin",
 				"ls -l",
-				"get up.bin "+back.getPath(),
+				"get up.bin "+back.getPath().replace('\\', '/'),
 				"rename up.bin renamed.bin",
 				"chmod 600 renamed.bin",
 				"ls -l",
@@ -211,8 +211,11 @@ public class OpenSshClientIT {
 		assertArrayEquals(data, java.nio.file.Files.readAllBytes(back.toPath()), "get");
 		File onServer = new File(sftpRoot, "docs/renamed.bin");
 		assertArrayEquals(data, java.nio.file.Files.readAllBytes(onServer.toPath()), "put and rename");
-		assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"),
-				java.nio.file.Files.getPosixFilePermissions(onServer.toPath()), "chmod");
+		// chmod is only observable where the file system has POSIX permissions (not Windows)
+		if( java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix") ) {
+			assertEquals(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"),
+					java.nio.file.Files.getPosixFilePermissions(onServer.toPath()), "chmod");
+		}
 		assertTrue(out.contains("renamed.bin"), out);
 
 		java.nio.file.Files.write(batch.toPath(), "rm docs/renamed.bin\nrmdir docs\n".getBytes(StandardCharsets.UTF_8));

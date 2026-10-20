@@ -54,6 +54,8 @@ public class SshAgentTest {
 	@BeforeAll
 	public static void startAgent() throws Exception {
 		assumeTrue(SshAgent.isSupported(), "Unix domain sockets need Java 16");
+		// ssh-agent on Windows isn't reachable through a Java Unix domain socket (named pipe, or an emulated socket file)
+		assumeTrue(!System.getProperty("os.name", "").toLowerCase().contains("win"), "no usable ssh-agent socket on Windows");
 		// Short: socket paths are limited to about 100 characters
 		dir = Files.createTempDirectory("agt").toFile();
 		socket = new File(dir, "a.sock").getPath();
