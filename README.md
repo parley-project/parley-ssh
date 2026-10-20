@@ -240,6 +240,32 @@ There is **no setting** that lets a link lead outside the root, unlike the FTP s
 
 These behaviors are tested in `SftpServerLinksTest` (and the sandbox in `SftpServerTest`).
 
+## Writers in the SFTP server
+
+Two sessions never write one file at once, whether they are on this server or on others that share
+the store:
+
+- A file open for writing (or for truncating) holds its lock until the handle is closed or the session
+  ends. While another session holds it, opening it for writing, removing it, renaming it (or renaming
+  another file over it) and changing its size are refused at once with `SSH_FX_LOCK_CONFLICT`
+  (`SSH_FX_FAILURE` before version 5) and "The file is being written by another session". A client can
+  try again later. One session may open a file for writing more than once.
+- Reading takes no lock: a reader sees the file as it is being written.
+- The locks are parley-net's (`StoreLocks`): one lock domain per root, shared with the other servers in
+  the JVM that serve it (parley-ftp's FTP server, say), so an FTP upload and an SFTP write of one file
+  keep out of each other too. A root inside one already in use shares its domain.
+- How many servers share the store is the system property `parley.sftp.sharedStore`: `off` (the default:
+  this server alone; the first session claims the store and a server elsewhere that claims it alone is
+  refused), `host` (several on one machine) or `cluster` (several anywhere). With `host` or `cluster`,
+  every server must serve the same root, where the locks are kept. `parley.sftp.serverId` names this
+  server among them (default: the host and the process).
+- The locks are kept in the root, in `.parley-net-locks`. The server hides it: it isn't listed and can't
+  be reached, so no client can change it.
+- Not covered: a directory removed or renamed while a file in it is being written (the write then fails
+  as it would without locks), and two names for one file on a file system that ignores case.
+
+Tested in `SftpLocksTest`.
+
 ## Shells
 
 `SshServer` answers "shell" requests (an interactive `ssh host`) through an `IShellFactory`, set in

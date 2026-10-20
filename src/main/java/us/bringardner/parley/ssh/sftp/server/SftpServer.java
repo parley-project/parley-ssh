@@ -48,6 +48,11 @@ import java.util.Map;
 
 import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.files.IRandomAccessStream;
+import us.bringardner.parley.net.lock.LockDomain;
+import us.bringardner.parley.net.lock.Locks;
+import us.bringardner.parley.net.lock.NamedLock;
+import us.bringardner.parley.net.lock.StoreClaim;
+import us.bringardner.parley.net.lock.StoreLocks;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.server.AbstractCommand;
 import us.bringardner.parley.ssh.server.CommandEnvironment;
@@ -69,6 +74,15 @@ import us.bringardner.parley.ssh.sftp.SftpConstants;
  * still be seen and removed but not followed. Error messages don't show real paths.
  * <p>
  * Requests are answered in order on one thread, which is what SFTP clients expect.
+ * <p>
+ * Writers keep out of each other, here and on other servers sharing the store (parley-net's
+ * {@link StoreLocks}; how many servers share it is {@value #SHARED_STORE_PROPERTY}: {@code off},
+ * the default, {@code host} or {@code cluster}): a file open for writing holds its lock until it
+ * is closed, and while another session holds it, opening it for writing, removing it, renaming it
+ * or changing its size is refused at once ({@code SSH_FX_LOCK_CONFLICT}, or {@code SSH_FX_FAILURE}
+ * before version 5). One session may open a file for writing more than once. Reading takes no
+ * lock: a reader sees the file as it is being written. The store's lock directory
+ * ({@value Locks#DIRECTORY}) can't be seen or reached.
  *
  * @author Tony Bringardner
  */
@@ -95,17 +109,54 @@ public class SftpServer extends AbstractCommand {
 		}
 	}
 
+	/** System property: how many servers share the store (off, host, cluster; default off). */
+	public static final String SHARED_STORE_PROPERTY = "parley.sftp.sharedStore";
+	/** System property: this server's id among those that share the store (default: host and process). */
+	public static final String SERVER_ID_PROPERTY = "parley.sftp.serverId";
+
+	/** A file's lock, with the domain it is in (kept open while it is held). */
+	private static final class FileLock {
+		final LockDomain domain;
+		final NamedLock lock;
+
+		FileLock(LockDomain domain, NamedLock lock) {
+			this.domain = domain;
+			this.lock = lock;
+		}
+
+		void close() {
+			try {
+				lock.close();
+			} finally {
+				StoreLocks.get().release(domain);
+			}
+		}
+	}
+
 	private static final class FileHandle {
 		final FileSource file;
 		final IRandomAccessStream raf;
 		final boolean writable;
 		final boolean append;
+		/** The file's lock while it is open for writing, or null */
+		final FileLock lock;
 
-		FileHandle(FileSource file, IRandomAccessStream raf, boolean writable, boolean append) {
+		FileHandle(FileSource file, IRandomAccessStream raf, boolean writable, boolean append, FileLock lock) {
 			this.file = file;
 			this.raf = raf;
 			this.writable = writable;
 			this.append = append;
+			this.lock = lock;
+		}
+
+		void close() throws IOException {
+			try {
+				raf.close();
+			} finally {
+				if( lock != null ) {
+					lock.close();
+				}
+			}
 		}
 	}
 
@@ -138,6 +189,23 @@ public class SftpServer extends AbstractCommand {
 	protected int run(CommandEnvironment env, InputStream in, OutputStream out, OutputStream err) throws Exception {
 		this.out = out;
 		DataInputStream din = new DataInputStream(in);
+		// the store's locks, with the servers here and those sharing it; refused if another server
+		// has it alone
+		LockDomain domain;
+		StoreClaim claim;
+		try {
+			domain = StoreLocks.get().acquire(root, StoreLocks.sharing(SHARED_STORE_PROPERTY));
+		} catch (IOException e) {
+			logError("SFTP: can't set up the locks of "+root.getAbsolutePath(), e);
+			return 1;
+		}
+		try {
+			claim = domain.claimStore(StoreLocks.serverId(SERVER_ID_PROPERTY, "sftp", 0));
+		} catch (IOException e) {
+			StoreLocks.get().release(domain);
+			logError("SFTP: "+e.getMessage(), e);
+			return 1;
+		}
 		try {
 			while( !isDestroyed() ) {
 				int len;
@@ -156,7 +224,12 @@ public class SftpServer extends AbstractCommand {
 			}
 			return 0;
 		} finally {
-			closeAll();
+			try {
+				closeAll();
+			} finally {
+				claim.close();
+				StoreLocks.get().release(domain);
+			}
 		}
 	}
 
@@ -164,13 +237,44 @@ public class SftpServer extends AbstractCommand {
 		for (Object h : handles.values()) {
 			if( h instanceof FileHandle ) {
 				try {
-					((FileHandle) h).raf.close();
-				} catch (IOException e) {
+					((FileHandle) h).close();
+				} catch (IOException | RuntimeException e) {
 					// closing anyway
 				}
 			}
 		}
 		handles.clear();
+	}
+
+	/**
+	 * The file's lock, for writing it, removing it or renaming it: taken at once or refused. A
+	 * session may take one it holds again (a second handle).
+	 * @return the lock, or null for a file outside every registered store (none to take)
+	 * @throws Status if another session or server holds it
+	 */
+	private FileLock lock(FileSource f) throws IOException {
+		LockDomain d = StoreLocks.get().acquireFor(f);
+		if( d == null ) {
+			return null;
+		}
+		NamedLock l;
+		try {
+			l = d.request(StoreLocks.fileLockName(d, f)).exclusive().tryAcquire();
+		} catch (IOException | RuntimeException e) {
+			StoreLocks.get().release(d);
+			throw e;
+		}
+		if( l == null ) {
+			StoreLocks.get().release(d);
+			throw new Status(SftpConstants.SSH_FX_LOCK_CONFLICT, "The file is being written by another session");
+		}
+		return new FileLock(d, l);
+	}
+
+	private static void closeQuietly(FileLock l) {
+		if( l != null ) {
+			l.close();
+		}
 	}
 
 	// ------------------------------------------------------------------ dispatch
@@ -305,7 +409,7 @@ public class SftpServer extends AbstractCommand {
 	 */
 	private FileSource followed(String path) throws IOException {
 		FileSource f = resolve(path);
-		if( !root.isChildOfMine(f) ) {
+		if( !root.isChildOfMine(f) || StoreLocks.get().isLockFile(f) ) {
 			throw new Status(SftpConstants.SSH_FX_PERMISSION_DENIED, "Permission denied");
 		}
 		return f;
@@ -321,7 +425,11 @@ public class SftpServer extends AbstractCommand {
 		}
 		int i = n.lastIndexOf('/');
 		FileSource parent = followed(n.substring(0, Math.max(1, i)));
-		return parent.getChild(n.substring(i+1));
+		FileSource f = parent.getChild(n.substring(i+1));
+		if( StoreLocks.get().isLockFile(f) ) {
+			throw new Status(SftpConstants.SSH_FX_PERMISSION_DENIED, "Permission denied");
+		}
+		return f;
 	}
 
 	private void writable() throws Status {
@@ -360,6 +468,18 @@ public class SftpServer extends AbstractCommand {
 		if( exists && f.isDirectory() ) {
 			throw new Status(SftpConstants.SSH_FX_FILE_IS_A_DIRECTORY, "Is a directory");
 		}
+		// a writer takes the file's lock before it creates or empties it, and keeps it until close
+		FileLock lock = write || (flags & SftpConstants.SSH_FXF_TRUNC) != 0 ? lock(f) : null;
+		try {
+			openLocked(id, f, exists, flags, write, creat, attrs, lock);
+		} catch (IOException | RuntimeException e) {
+			closeQuietly(lock);
+			throw e;
+		}
+	}
+
+	private void openLocked(int id, FileSource f, boolean exists, int flags, boolean write, boolean creat, SftpAttrs attrs,
+			FileLock lock) throws IOException {
 		if( !exists ) {
 			if( !creat ) {
 				throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
@@ -382,7 +502,7 @@ public class SftpServer extends AbstractCommand {
 			raf.close();
 			throw e;
 		}
-		handle(id, new FileHandle(f, raf, write, (flags & SftpConstants.SSH_FXF_APPEND) != 0));
+		handle(id, new FileHandle(f, raf, write, (flags & SftpConstants.SSH_FXF_APPEND) != 0, lock));
 	}
 
 	/**
@@ -458,7 +578,7 @@ public class SftpServer extends AbstractCommand {
 			throw new Status(SftpConstants.SSH_FX_INVALID_HANDLE, "Bad handle");
 		}
 		if( h instanceof FileHandle ) {
-			((FileHandle) h).raf.close();
+			((FileHandle) h).close();
 		}
 		ok(id);
 	}
@@ -470,7 +590,13 @@ public class SftpServer extends AbstractCommand {
 		if( !f.exists() ) {
 			throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
 		}
-		apply(id, f, null, a);
+		// changing the size is a write
+		FileLock lock = a.hasSize() ? lock(f) : null;
+		try {
+			apply(id, f, null, a);
+		} finally {
+			closeQuietly(lock);
+		}
 	}
 
 	private void fsetStat(int id, SshBuffer p) throws IOException {
@@ -536,7 +662,13 @@ public class SftpServer extends AbstractCommand {
 		if( list == null ) {
 			throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't list");
 		}
-		handle(id, new DirHandle(d, new ArrayDeque<FileSource>(Arrays.asList(list))));
+		ArrayDeque<FileSource> entries = new ArrayDeque<FileSource>();
+		for (FileSource e : list) {
+			if( !StoreLocks.get().isLockFile(e) ) {
+				entries.add(e);
+			}
+		}
+		handle(id, new DirHandle(d, entries));
 	}
 
 	private void readDir(int id, SshBuffer p) throws IOException {
@@ -625,8 +757,14 @@ public class SftpServer extends AbstractCommand {
 		if( !link && f.isDirectory() ) {
 			throw new Status(SftpConstants.SSH_FX_FILE_IS_A_DIRECTORY, "Is a directory");
 		}
-		if( !f.delete() ) {
-			throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't remove the file");
+		// not while another session writes it (a link itself is never written)
+		FileLock lock = link ? null : lock(f);
+		try {
+			if( !f.delete() ) {
+				throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't remove the file");
+			}
+		} finally {
+			closeQuietly(lock);
 		}
 		ok(id);
 	}
@@ -645,10 +783,19 @@ public class SftpServer extends AbstractCommand {
 		if( dstExists && !replace ) {
 			throw new Status(SftpConstants.SSH_FX_FILE_ALREADY_EXISTS, "File exists");
 		}
-		if( !src.renameTo(dst) ) {
-			if( !(replace && dstExists && !dst.isDirectory() && dst.delete() && src.renameTo(dst)) ) {
-				throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't rename");
+		// not while another session writes either file (links and directories aren't written)
+		FileLock srcLock = isLink(src) || src.isDirectory() ? null : lock(src);
+		FileLock into = null;
+		try {
+			into = isLink(dst) || dst.isDirectory() ? null : lock(dst);
+			if( !src.renameTo(dst) ) {
+				if( !(replace && dstExists && !dst.isDirectory() && src.renameTo(dst, true)) ) {
+					throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't rename");
+				}
 			}
+		} finally {
+			closeQuietly(into);
+			closeQuietly(srcLock);
 		}
 		ok(id);
 	}

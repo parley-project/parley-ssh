@@ -1,5 +1,20 @@
 # Changelog
 
+## parley-ssh 1.1.0 (unreleased)
+
+### Added
+
+- **SFTP writers keep out of each other**, across sessions and servers sharing the store (parley-net 1.1.0's
+  `StoreLocks`; `parley.sftp.sharedStore` = `off`, `host` or `cluster`): a file open for writing holds its
+  lock until it is closed, and writing it, removing it, renaming it or changing its size from another session
+  is refused at once (`SSH_FX_LOCK_CONFLICT`). Reading takes no lock. The store's lock directory is hidden.
+- Dependencies: parley-net and parley-files 1.1.0.
+
+### Changed (no code change needed)
+
+- A rename that replaces a file does it in one step where the store can (`renameTo(dest, true)`), instead of
+  deleting the file first.
+
 ## parley-ssh 1.0.0 (2026-10-16)
 
 BjlSsh (`us.bringardner:bjl_net_ssh` 1.0.0-SNAPSHOT, never released) is now **parley-ssh**, part of
