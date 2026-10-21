@@ -39,7 +39,7 @@ import java.util.List;
  * <b>The shell runs as the user the server runs as</b>, whoever logged in: give it only to
  * users who may do anything that account can (with an access control list, they need the
  * "shell" permission). It is not used unless set with
- * {@link SshServer#setShellFactory(IShellFactory)} or the ShellFactory property.
+ * {@link SshServer#setShellFactory(IShellFactory)} or the shellFactory property.
  *
  * @author Tony Bringardner
  */

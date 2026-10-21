@@ -383,7 +383,7 @@ public class ServerTest {
 			start();
 			server.setShellFactory(null);
 			server.startAndWait(5000);
-			assertNull(server.getShellFactory(), "ShellFactory=none");
+			assertNull(server.getShellFactory(), "shellFactory=none");
 			ClientSession t = connect(null);
 			t.authenticateAndWait("alice", new PasswordAuth("secret"));
 			SessionChannel sh2 = t.openSession();
@@ -394,7 +394,7 @@ public class ServerTest {
 		}
 	}
 
-	/** Made by name from the ShellFactory property */
+	/** Made by name from the shellFactory property */
 	public static class PropertyShell implements IShellFactory {
 		@Override
 		public ICommand create(CommandEnvironment env) {

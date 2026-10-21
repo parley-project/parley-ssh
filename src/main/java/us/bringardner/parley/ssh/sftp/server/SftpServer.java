@@ -110,9 +110,9 @@ public class SftpServer extends AbstractCommand {
 	}
 
 	/** System property: how many servers share the store (off, host, cluster; default off). */
-	public static final String SHARED_STORE_PROPERTY = "parley.sftp.sharedStore";
+	public static final String SHARED_STORE_PROPERTY = "parley.ssh.sftp.sharedStore";
 	/** System property: this server's id among those that share the store (default: host and process). */
-	public static final String SERVER_ID_PROPERTY = "parley.sftp.serverId";
+	public static final String SERVER_ID_PROPERTY = "parley.ssh.sftp.serverId";
 
 	/** A file's lock, with the domain it is in (kept open while it is held). */
 	private static final class FileLock {

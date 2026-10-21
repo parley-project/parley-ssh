@@ -53,8 +53,8 @@ public final class HostKeyProviders {
 	}
 
 	/**
-	 * The RSA and EC key entries of a SecureBaseObject's key store (the KeyStoreName,
-	 * KeyStorePassword and KeyStoreType settings, as for the framework's TLS servers).
+	 * The RSA and EC key entries of a SecureBaseObject's key store (the keyStoreName,
+	 * keyStorePassword and keyStoreType settings, as for the framework's TLS servers).
 	 */
 	public static IHostKeyProvider fromKeyStore(SecureBaseObject config) {
 		return () -> {

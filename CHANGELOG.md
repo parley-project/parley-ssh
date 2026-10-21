@@ -1,5 +1,15 @@
 # Changelog
 
+## parley-ssh 2.0.0 (unreleased)
+
+### Changed (needs a configuration change)
+
+- **Property names** (Parley 2.0.0; the old names are no longer read): `SshServer`'s prefix is `parley.ssh`
+  (was its class name), and its settings are lowerCamel: `parley.ssh.port`, `parley.ssh.hostKeyDir`,
+  `parley.ssh.shellFactory`, `parley.ssh.revokedKeys`, `parley.ssh.keyStoreName`, `parley.ssh.maxLoginAttempts` ...
+- `parley.sftp.sharedStore` and `parley.sftp.serverId` (the SFTP server) are `parley.ssh.sftp.sharedStore` and
+  `parley.ssh.sftp.serverId`.
+
 ## parley-ssh 1.1.0 (unreleased)
 
 ### Added

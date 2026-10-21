@@ -50,7 +50,7 @@ import us.bringardner.parley.ssh.transport.SshTransport;
 
 /**
  * An SSH server on the framework's non-blocking {@link NioServer}, so it is configured like
- * any Parley server (Port, BindAddress, MaxConnections, the key store settings...) and logs
+ * any Parley server (port, bindAddress, maxConnections, the key store settings...) and logs
  * users in with the same access control list.
  * <p>
  * <b>What it runs</b> is up to the plug-ins: {@link #setCommandFactory(ICommandFactory)} for
@@ -69,7 +69,7 @@ import us.bringardner.parley.ssh.transport.SshTransport;
  * defaults: 6 tries, 2 minutes; 250 ms delay).
  * <p>
  * <b>Host keys</b> come from {@link #setHostKeyProvider(IHostKeyProvider)}; else from the key
- * store when KeyStoreName is set; else they are made once in the HostKeyDir property's
+ * store when keyStoreName is set; else they are made once in the hostKeyDir property's
  * directory (default ".") like ssh-keygen -A.
  *
  * <pre>
@@ -84,16 +84,18 @@ import us.bringardner.parley.ssh.transport.SshTransport;
  */
 public class SshServer extends NioServer {
 
-	public static final String PROPERTY_HOST_KEY_DIR = "HostKeyDir";
+	/** The prefix of an SSH server's properties (parley.ssh.port, parley.ssh.hostKeyDir ...). */
+	public static final String PROPERTY_PREFIX = "parley.ssh";
+	public static final String PROPERTY_HOST_KEY_DIR = "hostKeyDir";
 	/**
 	 * Class name of the {@link IShellFactory} to use (public no-argument constructor), or "none"
 	 * for no shell; without it, fsh ({@value #DEFAULT_SHELL_FACTORY}) when it is on the class path
 	 */
-	public static final String PROPERTY_SHELL_FACTORY = "ShellFactory";
+	public static final String PROPERTY_SHELL_FACTORY = "shellFactory";
 	/** The shell used when none is configured and it is on the class path: fsh, the FileSource Shell */
 	public static final String DEFAULT_SHELL_FACTORY = "us.bringardner.fsh.ssh.FshShellFactory";
 	/** A KRL or list of public keys (OpenSSH's RevokedKeys): those keys and certificates can't log in */
-	public static final String PROPERTY_REVOKED_KEYS = "RevokedKeys";
+	public static final String PROPERTY_REVOKED_KEYS = "revokedKeys";
 	/** Like OpenSSH's MaxAuthTries: clients try each of their keys, and each refused key counts */
 	public static final int DEFAULT_MAX_AUTH_TRIES = 6;
 	/** Like OpenSSH's LoginGraceTime */
@@ -130,6 +132,7 @@ public class SshServer extends NioServer {
 
 	public SshServer(int port) {
 		super(port);
+		setPropertyPrefix(PROPERTY_PREFIX);
 		ScheduledThreadPoolExecutor s = new ScheduledThreadPoolExecutor(1, new NamedThreadFactory("SshServer-scheduler"));
 		s.setRemoveOnCancelPolicy(true);
 		scheduler = s;
@@ -311,7 +314,7 @@ public class SshServer extends NioServer {
 				if( shellFactory == null && !shellFactoryConfigured ) {
 					String tmp = getProperty(PROPERTY_SHELL_FACTORY);
 					if( tmp != null && tmp.trim().equalsIgnoreCase("none") ) {
-						logInfo("No shell in server "+getName()+" (ShellFactory=none)");
+						logInfo("No shell in server "+getName()+" (shellFactory=none)");
 					} else if( tmp != null && !tmp.trim().isEmpty() ) {
 						try {
 							Class<?> c = Class.forName(tmp.trim());
@@ -325,7 +328,7 @@ public class SshServer extends NioServer {
 						if( shellFactory == null ) {
 							logInfo("No shell defined in server "+getName());
 						} else {
-							logInfo("Server "+getName()+" uses fsh as its shell (ShellFactory=none turns it off)");
+							logInfo("Server "+getName()+" uses fsh as its shell (shellFactory=none turns it off)");
 						}
 					}
 					shellFactoryConfigured = true;
@@ -461,8 +464,8 @@ public class SshServer extends NioServer {
 		this.banner = banner;
 	}
 
-	// The login limits are the framework's (MaxLoginAttempts, LoginFailureDelay and
-	// LoginTimeLimit, set like any server setting), with OpenSSH's defaults
+	// The login limits are the framework's (maxLoginAttempts, loginFailureDelay and
+	// loginTimeLimit, set like any server setting), with OpenSSH's defaults
 
 	@Override
 	protected int getDefaultMaxLoginAttempts() {

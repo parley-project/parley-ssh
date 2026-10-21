@@ -100,7 +100,7 @@ try (SshClient client = new SshClient()) {
 **Host keys in DNS (SSHFP).** `HostKeyVerifiers.withLookup(lookup, fallback)` asks a lookup first
 (OpenSSH's `VerifyHostKeyDNS`): `TRUE` trusts the key, `FALSE` refuses it, `null` (no records, not
 secure, unavailable) leaves it to the fallback, such as `known_hosts`. parley-ssh doesn't depend on
-parley-dns; with it on the class path and a validating resolver (`-DJDns.dnssecValidation=true`):
+parley-dns; with it on the class path and a validating resolver (`-Dparley.dns.dnssecValidation=true`):
 
 ```java
 client.setHostKeyVerifier(HostKeyVerifiers.withLookup((host, blob) -> {
@@ -131,28 +131,27 @@ Parley server does.
 ### Properties
 
 Settings can also be given as properties: system properties, or a properties file named after the
-class on the class path, each named with the class name as prefix
-(`us.bringardner.parley.ssh.server.SshServer.Port`) or without it (`Port`, then shared with other
-Parley servers).
+class on the class path, each named with the server's prefix, `parley.ssh` (`parley.ssh.port`), or
+without it (`port`, then shared with other Parley servers).
 
 | Property | What it does | Default |
 |---|---|---|
-| `Port` | The port to listen on, when the server is made without one | 9200 (Parley's default: give 22 or another port) |
-| `BindAddress` | The address to listen on | all addresses |
-| `MaxConnections` | Connections at a time; more are refused | no limit |
-| `Backlog` | Connections waiting to be accepted | the system's |
-| `TcpNoDelay`, `KeepAlive` | TCP_NODELAY and SO_KEEPALIVE on connections | off |
-| `AuthenticationProvider` | Class name of the access control list (users, passwords, permissions), e.g. `us.bringardner.parley.net.server.FileBasedAcl` | none |
-| `HostKeyDir` | Where host keys are made and kept (with `*-cert.pub` host certificates) | the working directory |
-| `KeyStoreName`, `KeyStorePassword`, `KeyStoreType` | Host keys from a key store's RSA and EC entries instead of `HostKeyDir` | not used |
-| `ShellFactory` | Class name of the `IShellFactory` that answers "shell" requests, or `none` | fsh when it is on the class path, else none (shells refused) |
-| `RevokedKeys` | A key revocation list or list of keys that can't log in | none |
-| `MaxLoginAttempts` | Failed logins before the connection is closed | 6 |
-| `LoginFailureDelay` | Milliseconds before a failed login is answered | 250 |
-| `LoginTimeLimit` | Milliseconds a connection has to log in | 120000 |
+| `port` | The port to listen on, when the server is made without one | 9200 (Parley's default: give 22 or another port) |
+| `bindAddress` | The address to listen on | all addresses |
+| `maxConnections` | Connections at a time; more are refused | no limit |
+| `backlog` | Connections waiting to be accepted | the system's |
+| `tcpNoDelay`, `keepAlive` | TCP_NODELAY and SO_KEEPALIVE on connections | off |
+| `authenticationProvider` | Class name of the access control list (users, passwords, permissions), e.g. `us.bringardner.parley.net.server.FileBasedAcl` | none |
+| `hostKeyDir` | Where host keys are made and kept (with `*-cert.pub` host certificates) | the working directory |
+| `keyStoreName`, `keyStorePassword`, `keyStoreType` | Host keys from a key store's RSA and EC entries instead of `hostKeyDir` | not used |
+| `shellFactory` | Class name of the `IShellFactory` that answers "shell" requests, or `none` | fsh when it is on the class path, else none (shells refused) |
+| `revokedKeys` | A key revocation list or list of keys that can't log in | none |
+| `maxLoginAttempts` | Failed logins before the connection is closed | 6 |
+| `loginFailureDelay` | Milliseconds before a failed login is answered | 250 |
+| `loginTimeLimit` | Milliseconds a connection has to log in | 120000 |
 
 Properties of other Parley servers that an SSH server ignores: `secure` (SSH encrypts itself and
-never uses TLS), `SocketTimeout`, `AcceptTimeout`, `SoLinger` and `IsSoLinger` (they are for
+never uses TLS), `socketTimeout`, `acceptTimeout`, `soLinger` and `isSoLinger` (they are for
 servers that block a thread per connection).
 
 ### Settings in code
@@ -160,7 +159,7 @@ servers that block a thread per connection).
 | `SshServer` method | What it does | Default |
 |---|---|---|
 | `setPasswordAuthenticator`, `setPublicKeyAuthenticator`, `setAuthMethods` | How users log in | the access control list for passwords |
-| `setHostKeyProvider` | Where host keys (and host certificates) come from | `HostKeyDir` or the key store |
+| `setHostKeyProvider` | Where host keys (and host certificates) come from | `hostKeyDir` or the key store |
 | `setCommandFactory`, `setShellFactory`, `addSubsystem` | What "exec", "shell" and subsystem requests run | refused, except shells: fsh when it is on the class path |
 | `setForwardingFilter` | Which port forwardings are allowed (`ForwardingFilters.localOnly()`...) | none: refused |
 | `setAgentForwardingAllowed` | Whether clients may forward their agent | yes, as OpenSSH |
@@ -254,10 +253,10 @@ the store:
 - The locks are parley-net's (`StoreLocks`): one lock domain per root, shared with the other servers in
   the JVM that serve it (parley-ftp's FTP server, say), so an FTP upload and an SFTP write of one file
   keep out of each other too. A root inside one already in use shares its domain.
-- How many servers share the store is the system property `parley.sftp.sharedStore`: `off` (the default:
+- How many servers share the store is the system property `parley.ssh.sftp.sharedStore`: `off` (the default:
   this server alone; the first session claims the store and a server elsewhere that claims it alone is
   refused), `host` (several on one machine) or `cluster` (several anywhere). With `host` or `cluster`,
-  every server must serve the same root, where the locks are kept. `parley.sftp.serverId` names this
+  every server must serve the same root, where the locks are kept. `parley.ssh.sftp.serverId` names this
   server among them (default: the host and the process).
 - The locks are kept in the root, in `.parley-net-locks`. The server hides it: it isn't listed and can't
   be reached, so no client can change it.
@@ -269,17 +268,17 @@ Tested in `SftpLocksTest`.
 ## Shells
 
 `SshServer` answers "shell" requests (an interactive `ssh host`) through an `IShellFactory`, set in
-code or named with the `ShellFactory` property.
+code or named with the `shellFactory` property.
 
 **fsh, the FileSource Shell, is the default**: when no shell is configured and fsh
 (`us.bringardner.fsh.ssh.FshShellFactory`) is on the class path, users who log in get fsh. It needs
-Java 21; on older JVMs, or without fsh, shell requests are refused. `ShellFactory=none` turns the
+Java 21; on older JVMs, or without fsh, shell requests are refused. `shellFactory=none` turns the
 default off, and setting another shell replaces it. `ProcessShellFactory` runs the operating
 system's login shell instead.
 
 **fsh works with the access of the account the server runs as**, whoever logged in. Adding fsh to a
 server's class path gives every user who can log in a shell (with an access control list, only
-users with the "shell" permission): set `ShellFactory=none` if they shouldn't have one.
+users with the "shell" permission): set `shellFactory=none` if they shouldn't have one.
 
 ## Not supported
 
