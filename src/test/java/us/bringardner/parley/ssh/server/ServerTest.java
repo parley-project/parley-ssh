@@ -347,7 +347,7 @@ public class ServerTest {
 	@Test
 	public void secureNeverMeansTls() throws Exception {
 		System.setProperty("secure", "true");
-		System.setProperty(SshServer.class.getName()+".secure", "true");
+		System.setProperty(SshServer.PROPERTY_PREFIX+".secure", "true");
 		try {
 			start().startAndWait(5000);
 			assertFalse(server.isSecure());
@@ -359,7 +359,7 @@ public class ServerTest {
 			server.setSecure(false);
 		} finally {
 			System.clearProperty("secure");
-			System.clearProperty(SshServer.class.getName()+".secure");
+			System.clearProperty(SshServer.PROPERTY_PREFIX+".secure");
 		}
 	}
 
@@ -378,7 +378,7 @@ public class ServerTest {
 		s.close();
 		server.stop(5000, false);
 
-		System.setProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY, "none");
+		System.setProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY, "none");
 		try {
 			start();
 			server.setShellFactory(null);
@@ -390,7 +390,7 @@ public class ServerTest {
 			assertThrows(SshException.class, sh2::shell);
 			t.close();
 		} finally {
-			System.clearProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY);
+			System.clearProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY);
 		}
 	}
 
@@ -406,7 +406,7 @@ public class ServerTest {
 	@Test
 	public void shellFactoryFromProperty() throws Exception {
 		String name = "ssh-shell-property-test";
-		System.setProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY, PropertyShell.class.getName());
+		System.setProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY, PropertyShell.class.getName());
 		try {
 			start();
 			server.setShellFactory(null);
@@ -422,7 +422,7 @@ public class ServerTest {
 			assertEquals(0, sh.waitForExit(10, TimeUnit.SECONDS));
 			s.close();
 		} finally {
-			System.clearProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY);
+			System.clearProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY);
 		}
 	}
 
@@ -430,7 +430,7 @@ public class ServerTest {
 	@Test
 	public void badShellFactoryPropertyStopsStart() throws Exception {
 		String name = "ssh-bad-shell-test";
-		System.setProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY, "no.such.ShellFactory");
+		System.setProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY, "no.such.ShellFactory");
 		try {
 			start();
 			server.setShellFactory(null);
@@ -439,7 +439,7 @@ public class ServerTest {
 			assertTrue(e.getMessage().contains("no.such.ShellFactory"), e.getMessage());
 			assertEquals(-1, server.getLocalPort());
 		} finally {
-			System.clearProperty(SshServer.class.getName()+"."+SshServer.PROPERTY_SHELL_FACTORY);
+			System.clearProperty(SshServer.PROPERTY_PREFIX+"."+SshServer.PROPERTY_SHELL_FACTORY);
 		}
 	}
 

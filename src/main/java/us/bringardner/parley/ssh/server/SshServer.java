@@ -190,7 +190,7 @@ public class SshServer extends NioServer {
 			if( getKeyStoreFileName() != null ) {
 				p = HostKeyProviders.fromKeyStore(this);
 			} else {
-				p = HostKeyProviders.generated(new File(getProperty(PROPERTY_HOST_KEY_DIR, ".")));
+				p = HostKeyProviders.generated(new File(getProperty(propertyName(PROPERTY_HOST_KEY_DIR), ".")));
 			}
 		}
 		List<KeyPair> keys = p.getHostKeys();
@@ -211,7 +211,7 @@ public class SshServer extends NioServer {
 		}
 		hostKeys = Collections.unmodifiableList(new ArrayList<KeyPair>(keys));
 		hostCertificates = Collections.unmodifiableList(certs);
-		String revoked = getProperty(PROPERTY_REVOKED_KEYS);
+		String revoked = getProperty(propertyName(PROPERTY_REVOKED_KEYS));
 		if( revokedKeys == null && revoked != null && !revoked.trim().isEmpty() ) {
 			revokedKeys = us.bringardner.parley.ssh.keys.KeyRevocationList.load(new File(revoked.trim()));
 		}
@@ -312,7 +312,7 @@ public class SshServer extends NioServer {
 		if( shellFactory == null && !shellFactoryConfigured ) {
 			synchronized (this) {
 				if( shellFactory == null && !shellFactoryConfigured ) {
-					String tmp = getProperty(PROPERTY_SHELL_FACTORY);
+					String tmp = getProperty(propertyName(PROPERTY_SHELL_FACTORY));
 					if( tmp != null && tmp.trim().equalsIgnoreCase("none") ) {
 						logInfo("No shell in server "+getName()+" (shellFactory=none)");
 					} else if( tmp != null && !tmp.trim().isEmpty() ) {

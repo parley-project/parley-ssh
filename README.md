@@ -131,8 +131,8 @@ Parley server does.
 ### Properties
 
 Settings can also be given as properties: system properties, or a properties file named after the
-class on the class path, each named with the server's prefix, `parley.ssh` (`parley.ssh.port`), or
-without it (`port`, then shared with other Parley servers).
+class on the class path, each named with the server's prefix, `parley.ssh`: the table's `port` is
+`parley.ssh.port`, and so on.
 
 | Property | What it does | Default |
 |---|---|---|
