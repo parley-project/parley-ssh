@@ -186,6 +186,42 @@ whoever logged in.** Give `ProcessCommandFactory` and `ProcessShellFactory` only
 anything that account can (with an access control list, they need the "exec" or "shell"
 permission).
 
+### Running as a service
+
+`SshServer`'s `main` runs a server until the process is stopped, for systemd, launchd or a Windows
+service:
+
+```sh
+java -cp 'parley-ssh.jar:...' us.bringardner.parley.ssh.server.SshServer [-Dname=value ...]
+```
+
+It reads its settings from the command line and from a settings file (which wins over the command
+line, as for the other Parley servers), then sets the server up from them:
+
+| What | Setting | Default |
+|---|---|---|
+| Settings file | `parley.ssh.configFile` | `CONF/parley-ssh.properties`, when it is there |
+| Port | `parley.ssh.port` | 22 |
+| Host keys (made the first time, folder readable by its owner only) | `parley.ssh.hostKeyDir` | `CONF/ssh` |
+| Users' homes | `parley.ssh.homes` | `/home` (macOS `/Users`, Windows `C:\Users`) |
+| Trusted user CAs (OpenSSH's TrustedUserCAKeys) | `parley.ssh.trustedUserCaKeys` | `CONF/ssh/trusted_user_ca_keys`, when it is there |
+| Passwords | `parley.ssh.authenticationProvider` | none: no password logins |
+
+`CONF` is the folder of Parley's administrator file: `/etc/parley` (Windows `%ProgramData%\Parley`),
+or the folder of the file the `PARLEY_CONF` environment variable names. Users log in with a password
+(the access control list), a key in `HOMES/USER/.ssh/authorized_keys`, or a certificate signed by a
+trusted CA. With parley-files on the class path, SFTP puts each user in their home: the access
+control list's `userRoot` parameter (the one FTP uses), else `HOMES/USER`; a user with neither
+folder gets no SFTP. The shell is fsh when it is on the class path (`shellFactory`).
+
+The process exits with 1 when the server can't start (a port in use, a missing CA file, an access
+control list or shell that can't be made), so the service manager sees it. Stopping the process
+(SIGTERM) stops the server; under systemd, give `SuccessExitStatus=143`.
+
+**Every session runs as the service's account, whoever logged in**: fsh and SFTP see that account's
+files and permissions. Run the service as an account made for it, not as root (on Linux, port 22
+needs `AmbientCapabilities=CAP_NET_BIND_SERVICE` in the systemd unit, or a port above 1023).
+
 ## Links in the SFTP server
 
 SFTP knows about links, so the server hides nothing: a client can see a link (`LSTAT`, a directory

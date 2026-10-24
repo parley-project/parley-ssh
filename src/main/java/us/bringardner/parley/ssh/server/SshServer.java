@@ -43,6 +43,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import us.bringardner.parley.core.NamedThreadFactory;
 import us.bringardner.parley.net.nio.LineFrameDecoder;
 import us.bringardner.parley.net.nio.NioServer;
+import us.bringardner.parley.net.server.ServerMain;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
@@ -142,6 +143,56 @@ public class SshServer extends NioServer {
 		// Logins (password hashing), commands and file access block: not on the selector threads
 		setHandlerExecutor(executor);
 		setMaxInputBuffer(2*1024*1024);
+	}
+
+	/**
+	 * Run an SSH server as a service (systemd, launchd, a Windows service) until it is stopped:
+	 * settings from the command line ({@code -Dname=value} or {@code name value}) and the settings
+	 * file, host keys made once and kept, logins with passwords (the access control list), keys
+	 * in each user's authorized_keys and trusted user certificates, and SFTP to each user's home.
+	 * See {@link ServiceSetup} for where each of these is and the settings that move them.
+	 * <p>
+	 * The process exits with 1 if the server can't start (no host keys, a port in use, a shell or
+	 * access control list that can't be made), so a service manager sees the failure. Stopping
+	 * the process (SIGTERM, a service stop) stops the server.
+	 */
+	public static void main(String[] args) throws Exception {
+		ServiceSetup setup = ServiceSetup.forThisMachine();
+		String configProperty = PROPERTY_PREFIX+"."+ServiceSetup.PROPERTY_CONFIG_FILE;
+		// (the default settings file, unless the command line names one)
+		boolean named = System.getProperty(configProperty) != null;
+		for (String a : args) {
+			named |= a.equals(configProperty) || a.startsWith("-D"+configProperty+"=");
+		}
+		if( !named ) {
+			String file = setup.configFile();
+			if( file != null ) {
+				System.setProperty(configProperty, file);
+			}
+		}
+		ServerMain.configure("SshServer", args, configProperty);
+
+		SshServer server = new SshServer(ServiceSetup.DEFAULT_PORT);
+		server.setName("SshServer");
+		try {
+			setup.configure(server);
+			server.startAndWait(60000);
+		} catch (IOException | IllegalStateException e) {
+			System.err.println("SshServer not started: "+e.getMessage());
+			server.stop();
+			System.exit(1);
+			return;
+		}
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			try {
+				server.stop(10000, false);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		}, "SshServer-shutdown"));
+		System.out.println("SshServer started on port "+server.getLocalPort());
+		// (the server's thread is a daemon: the process lives as long as this waits)
+		server.join(0);
 	}
 
 	/**
