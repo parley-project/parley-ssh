@@ -77,7 +77,7 @@ version 6.
 - `ShellFactory` property: the shell is chosen by class name; a class that can't be made stops the
   server from starting.
 - **fsh is the default shell**: with no shell configured, a server whose class path has fsh
-  (`us.bringardner.fsh.ssh.FshShellFactory`, Java 21+) gives users fsh. `ShellFactory=none` turns
+  (`us.bringardner.fsh.ssh.FshShellFactory`) gives users fsh. `ShellFactory=none` turns
   it off.
 
 ### Changed (needs a code change)
