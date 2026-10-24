@@ -216,17 +216,6 @@ public class ServiceSetupTest {
 	}
 
 	@Test
-	public void configFile() throws Exception {
-		ServiceSetup s = new ServiceSetup(conf, false, false);
-		assertNull(s.configFile(), "no file, no setting");
-		File f = new File(conf, ServiceSetup.CONFIG_FILE_NAME);
-		Files.write(f.toPath(), Collections.singletonList("parley.ssh.port=2222"));
-		assertEquals(f.getPath(), s.configFile());
-		set(ServiceSetup.PROPERTY_CONFIG_FILE, "/elsewhere.properties");
-		assertEquals("/elsewhere.properties", s.configFile());
-	}
-
-	@Test
 	public void defaultHomes() {
 		assertEquals(new File("/home"), new ServiceSetup(conf, false, false).defaultHomes());
 		assertEquals(new File("/Users"), new ServiceSetup(conf, false, true).defaultHomes());

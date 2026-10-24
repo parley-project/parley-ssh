@@ -29,9 +29,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Map;
 
-import us.bringardner.parley.plugin.PluginFolders;
+import us.bringardner.parley.net.server.ServerMain;
 
 /**
  * How {@link SshServer#main(String[])} sets up a server run as a service (systemd, launchd, a
@@ -79,32 +78,14 @@ final class ServiceSetup {
 		this.mac = mac;
 	}
 
-	/** For this machine: the administrator folder from the environment and the operating system */
+	/** For this machine: Parley's administrator folder (ServerMain.confDir) and the operating system */
 	static ServiceSetup forThisMachine() {
 		String os = System.getProperty("os.name", "").toLowerCase();
-		boolean windows = os.startsWith("windows");
-		Map<String, String> env = System.getenv();
-		File admin = PluginFolders.adminFile(env, windows);
-		File dir = admin.getAbsoluteFile().getParentFile();
-		return new ServiceSetup(dir, windows, os.startsWith("mac"));
+		return new ServiceSetup(ServerMain.confDir(), os.startsWith("windows"), os.startsWith("mac"));
 	}
 
 	File getConfDir() {
 		return confDir;
-	}
-
-	/**
-	 * The settings file to read: the one named by parley.ssh.configFile, else CONF/parley-ssh.properties
-	 * when it is there (null: none)
-	 */
-	String configFile() {
-		String name = SshServer.PROPERTY_PREFIX+"."+PROPERTY_CONFIG_FILE;
-		String set = System.getProperty(name);
-		if( set != null && !set.trim().isEmpty() ) {
-			return set.trim();
-		}
-		File f = new File(confDir, CONFIG_FILE_NAME);
-		return f.isFile() ? f.getPath() : null;
 	}
 
 	File defaultHomes() {

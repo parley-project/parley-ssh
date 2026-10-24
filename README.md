@@ -195,8 +195,8 @@ service:
 java -cp 'parley-ssh.jar:...' us.bringardner.parley.ssh.server.SshServer [-Dname=value ...]
 ```
 
-It reads its settings from the command line and from a settings file (which wins over the command
-line, as for the other Parley servers), then sets the server up from them:
+It runs with parley-net's `ServerMain.run`, as every Parley server does: its settings come from the
+command line and a settings file (the command line wins), then it sets the server up from them:
 
 | What | Setting | Default |
 |---|---|---|

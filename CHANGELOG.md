@@ -5,12 +5,12 @@
 ### Added
 
 - **`SshServer.main`: an SSH server run as a service** (systemd, launchd, a Windows service). Settings from
-  the command line and `parley-ssh.properties` in Parley's administrator folder (`/etc/parley`, Windows
+  the command line (which wins) and `parley-ssh.properties` in Parley's administrator folder (`/etc/parley`, Windows
   `%ProgramData%\Parley`, or `$PARLEY_CONF`'s folder); host keys made once in its `ssh` folder; logins with
   passwords (the access control list), each user's `.ssh/authorized_keys` under `parley.ssh.homes` and user
   certificates from trusted CAs (`parley.ssh.trustedUserCaKeys`); SFTP to each user's home (the access
-  control list's `userRoot`, as FTP, else the home folder). It exits with 1 when the server can't start,
-  and stops when the process is stopped. Every session runs as the service's account.
+  control list's `userRoot`, as FTP, else the home folder). It runs with parley-net's `ServerMain.run`: it exits with 1 when the server can't
+  start, and stops when the process is stopped. Every session runs as the service's account.
 
 ### Changed (needs a configuration change)
 
