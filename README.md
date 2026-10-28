@@ -307,8 +307,8 @@ Tested in `SftpLocksTest`.
 code or named with the `shellFactory` property.
 
 **fsh, the FileSource Shell, is the default**: when no shell is configured and fsh
-(`us.bringardner.fsh.ssh.FshShellFactory`) is on the class path, users who log in get fsh. It needs
-Java 21; on older JVMs, or without fsh, shell requests are refused. `shellFactory=none` turns the
+(`us.bringardner.fsh.ssh.FshShellFactory`) is on the class path, users who log in get fsh. It runs on
+Java 11 or later, as parley-ssh does; without fsh, shell requests are refused. `shellFactory=none` turns the
 default off, and setting another shell replaces it. `ProcessShellFactory` runs the operating
 system's login shell instead.
 

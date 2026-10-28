@@ -322,7 +322,7 @@ public class SshServer extends NioServer {
 	/**
 	 * @return the factory set with {@link #setShellFactory(IShellFactory)}, else one made from
 	 * the {@value #PROPERTY_SHELL_FACTORY} property, else fsh when it is on the class path
-	 * (and the JVM can run it: Java 21+), else null (shell requests are refused). The
+	 * (and it can be made), else null (shell requests are refused). The
 	 * property "none" means no shell, even with fsh there.
 	 * @throws IllegalStateException if the property names a class that can't be made
 	 */
@@ -366,7 +366,7 @@ public class SshServer extends NioServer {
 		} catch (ClassNotFoundException e) {
 			return null;
 		} catch (Exception | LinkageError e) {
-			// e.g. fsh needs Java 21
+			// e.g. an fsh built for a newer Java than this one
 			logInfo("fsh is on the class path but can't be used as the shell: "+e);
 			return null;
 		}
