@@ -665,6 +665,11 @@ public final class SshMain {
 			});
 		}
 
+		if( o.command == null && !pty && !stdinTerminal && !o.stdinNull && !o.isQuiet() ) {
+			// e.g. started from an IDE: the shell works, but would look as if nothing happened
+			message("Logged in to "+o.hostName+". stdin is not a terminal, so the remote shell shows no prompt:"
+					+" type commands, and exit (or end of input) to leave.");
+		}
 		Thread out = pump(ch.getInputStream(), terminal.out(), "ssh-stdout");
 		Thread errOut = pump(ch.getErrorStream(), terminal.err(), "ssh-stderr");
 		if( o.stdinNull ) {
