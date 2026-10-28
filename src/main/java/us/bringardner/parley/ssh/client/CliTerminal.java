@@ -43,7 +43,7 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 /**
- * What {@link SshMain} needs from the terminal it runs in: its streams, whether stdin is a
+ * What {@link Ssh} needs from the terminal it runs in: its streams, whether stdin is a
  * terminal, raw mode and the window size for a remote pseudo terminal, and prompts for
  * passwords and host keys (on the terminal even when stdin is redirected, as OpenSSH asks on
  * /dev/tty). {@link #system()} is the process's own; tests use another.

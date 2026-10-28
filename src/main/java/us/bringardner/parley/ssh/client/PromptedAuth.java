@@ -40,7 +40,7 @@ import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 import us.bringardner.parley.ssh.keys.SshKeyLoader;
 
 /**
- * {@link SshMain}'s login methods that ask the user, only when the server gets that far: a
+ * {@link Ssh}'s login methods that ask the user, only when the server gets that far: a
  * password (asked again after a wrong one, as OpenSSH's NumberOfPasswordPrompts), the
  * prompts of keyboard-interactive, and the passphrase of a key file (asked once the server said
  * it would accept the key, when its .pub file is there to ask with).

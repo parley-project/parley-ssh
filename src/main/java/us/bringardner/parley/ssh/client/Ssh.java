@@ -61,7 +61,7 @@ import us.bringardner.parley.ssh.transport.SshTransport;
  * An ssh command: log in to a server and run a shell or a command, as OpenSSH's ssh(1) does.
  *
  * <pre>
- * java -cp ... us.bringardner.parley.ssh.client.SshMain [options] [user@]host [command]
+ * java -cp ... us.bringardner.parley.ssh.client.Ssh [options] [user@]host [command]
  * </pre>
  *
  * The options are OpenSSH's (see {@link #usage()}), and ~/.ssh/config and /etc/ssh/ssh_config
@@ -73,7 +73,7 @@ import us.bringardner.parley.ssh.transport.SshTransport;
  *
  * @author Tony Bringardner
  */
-public final class SshMain {
+public final class Ssh {
 
 	private static final int FAILED = 255;
 
@@ -85,13 +85,13 @@ public final class SshMain {
 	private volatile boolean rawMode;
 	private final List<PortForwarder> forwarders = new ArrayList<PortForwarder>();
 
-	SshMain(CliTerminal terminal, boolean manageLogging) {
+	Ssh(CliTerminal terminal, boolean manageLogging) {
 		this.terminal = terminal;
 		this.manageLogging = manageLogging;
 	}
 
 	public static void main(String[] args) {
-		int status = new SshMain(CliTerminal.system(), true).run(args);
+		int status = new Ssh(CliTerminal.system(), true).run(args);
 		System.exit(status);
 	}
 
@@ -151,7 +151,7 @@ public final class SshMain {
 	}
 
 	static String version() {
-		Package p = SshMain.class.getPackage();
+		Package p = Ssh.class.getPackage();
 		String v = p == null ? null : p.getImplementationVersion();
 		return "Parley SSH client"+(v == null ? "" : " "+v)+" ("+SshTransport.DEFAULT_VERSION+"), Java "+System.getProperty("java.version");
 	}

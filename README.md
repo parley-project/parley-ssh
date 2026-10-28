@@ -35,7 +35,7 @@ read; OpenSSH and PKCS#8 files are written.
 - exec, shells with a pseudo terminal, subsystems, local and remote port forwarding (`-L`, `-R`),
   agent forwarding (`-A`), keep-alives
 - SFTP versions 3 to 6, with several reads and writes in flight
-- An `ssh` command for the command line (`SshMain`, see [The ssh command](#the-ssh-command))
+- An `ssh` command for the command line (`Ssh`, see [The ssh command](#the-ssh-command))
 
 **Server**
 - Login with password and keyboard-interactive through the access control list every Parley server
@@ -118,10 +118,10 @@ Only a DNSSEC-validated answer proves anything, so `SshfpVerifier` reports unsig
 
 ### The ssh command
 
-`us.bringardner.parley.ssh.client.SshMain` is a command-line client, used like OpenSSH's `ssh`:
+`us.bringardner.parley.ssh.client.Ssh` is a command-line client, used like OpenSSH's `ssh`:
 
 ```
-java -cp <parley-ssh and its dependencies> us.bringardner.parley.ssh.client.SshMain [options] [user@]host [command]
+java -cp <parley-ssh and its dependencies> us.bringardner.parley.ssh.client.Ssh [options] [user@]host [command]
 ```
 
 `mvn dependency:build-classpath` prints the class path. The client:

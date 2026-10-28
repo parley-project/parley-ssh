@@ -35,7 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * The settings of one {@link SshMain} run: its command line (OpenSSH's options), then the
+ * The settings of one {@link Ssh} run: its command line (OpenSSH's options), then the
  * ssh_config files. As in OpenSSH the first value obtained for a setting is used, so the
  * command line wins over the files and the first matching Host block wins over later ones;
  * settings that are lists (IdentityFile, LocalForward, RemoteForward, SendEnv...) collect every

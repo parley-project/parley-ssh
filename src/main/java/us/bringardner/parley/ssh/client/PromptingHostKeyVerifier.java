@@ -36,7 +36,7 @@ import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
 /**
- * {@link SshMain}'s host key check, as OpenSSH's StrictHostKeyChecking: the keys are looked up in
+ * {@link Ssh}'s host key check, as OpenSSH's StrictHostKeyChecking: the keys are looked up in
  * the user's known_hosts files (new keys are added to the first) and the global ones (read only).
  * A key that doesn't match the one known, or is revoked, is always refused. An unknown host is
  * refused ("yes"), added ("accept-new", "no") or the user is asked ("ask").

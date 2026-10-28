@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`SshMain`: an `ssh` command** with OpenSSH's options and `ssh_config` files (Host, Match, Include). It
+- **`Ssh`: an `ssh` command** with OpenSSH's options and `ssh_config` files (Host, Match, Include). It
   checks host keys against `known_hosts` and asks about new hosts. It logs in with the agent, key files
   (asking for a passphrase only for a key the server accepts), keyboard-interactive and password. It gives
   shells a pseudo terminal with the local terminal in raw mode and window size changes sent, and supports

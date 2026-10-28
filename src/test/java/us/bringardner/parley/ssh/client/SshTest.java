@@ -50,10 +50,10 @@ import us.bringardner.parley.ssh.server.SshPrincipal;
 import us.bringardner.parley.ssh.server.SshServer;
 
 /**
- * The ssh command (SshMain): its command line and config files, then whole runs against an
+ * The ssh command (Ssh): its command line and config files, then whole runs against an
  * in-process SshServer with a stand-in terminal.
  */
-public class SshMainTest {
+public class SshTest {
 
 	@TempDir
 	File dir;
@@ -258,12 +258,12 @@ public class SshMainTest {
 	@Test
 	public void algorithmLists() {
 		List<String> cur = Arrays.asList("a", "b", "c");
-		assertArrayEquals(new String[] {"x", "y"}, SshMain.edit(cur, "x,y"));
-		assertArrayEquals(new String[] {"a", "b", "c", "d"}, SshMain.edit(cur, "+d,a"));
-		assertArrayEquals(new String[] {"a"}, SshMain.edit(cur, "-b,c"));
-		assertArrayEquals(new String[] {"c"}, SshMain.edit(cur, "-[ab]*,a*,b"));
-		assertArrayEquals(new String[] {"c", "a", "b"}, SshMain.edit(cur, "^c"));
-		assertThrows(IllegalArgumentException.class, () -> SshMain.edit(cur, "-*"));
+		assertArrayEquals(new String[] {"x", "y"}, Ssh.edit(cur, "x,y"));
+		assertArrayEquals(new String[] {"a", "b", "c", "d"}, Ssh.edit(cur, "+d,a"));
+		assertArrayEquals(new String[] {"a"}, Ssh.edit(cur, "-b,c"));
+		assertArrayEquals(new String[] {"c"}, Ssh.edit(cur, "-[ab]*,a*,b"));
+		assertArrayEquals(new String[] {"c", "a", "b"}, Ssh.edit(cur, "^c"));
+		assertThrows(IllegalArgumentException.class, () -> Ssh.edit(cur, "-*"));
 	}
 
 	// ------------------------------------------------------------------ runs
@@ -354,7 +354,7 @@ public class SshMainTest {
 	}
 
 	private int run(TestTerminal t, List<String> args) {
-		return new SshMain(t, false).run(args.toArray(new String[0]));
+		return new Ssh(t, false).run(args.toArray(new String[0]));
 	}
 
 	@Test
