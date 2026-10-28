@@ -157,6 +157,35 @@ public class SshTest {
 	}
 
 	@Test
+	public void proxyOptions() throws Exception {
+		assertArrayEquals(new String[] {"bob", "bastion", "2200"}, SshOptions.parseJump("bob@bastion:2200"));
+		assertArrayEquals(new String[] {null, "fe80::1", "22"}, SshOptions.parseJump("[fe80::1]:22"));
+		assertArrayEquals(new String[] {null, "fe80::1", null}, SshOptions.parseJump("fe80::1"));
+		assertArrayEquals(new String[] {"a", "h", null}, SshOptions.parseJump("ssh://a@h"));
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parseJump("h:99999"));
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("-J", "@h", "target"));
+
+		SshOptions o = SshOptions.parse("-J", "a,b@c:2", "-o", "ProxyCommand nc %h %p", "target");
+		assertEquals(Arrays.asList("a", "b@c:2"), o.jumpHops());
+		assertNull(o.proxyCommand, "the first of ProxyJump and ProxyCommand wins");
+
+		o = SshOptions.parse("-o", "ProxyCommand=ssh -W \"[%h]:%p\" gw %%", "-J", "a", "-l", "u", "-p", "2", "target");
+		o.finish();
+		assertEquals("ssh -W \"[target]:2\" gw %", o.proxyCommandLine(), "as written (quotes kept), tokens expanded");
+		assertTrue(o.jumpHops().isEmpty());
+
+		assertTrue(finish(SshOptions.parse("-J", "none", "t")).jumpHops().isEmpty());
+		assertNull(finish(SshOptions.parse("-o", "ProxyCommand none", "t")).proxyCommandLine());
+
+		File cfg = write(new File(dir, "proxy_config"), "Host t\n  ProxyCommand /usr/bin/nc  \"%h\"   %p\n  ProxyJump ignored\n");
+		o = SshOptions.parse("t");
+		new SshConfigFile(o, s -> { }).read(cfg, dir, true);
+		o.finish();
+		assertEquals("/usr/bin/nc  \"t\"   22", o.proxyCommandLine());
+		assertTrue(o.jumpHops().isEmpty());
+	}
+
+	@Test
 	public void tokenize() {
 		assertEquals(Arrays.asList("Host", "a", "b"), SshOptions.tokenize("Host a b"));
 		assertEquals(Arrays.asList("Port", "22"), SshOptions.tokenize("Port=22"));
@@ -584,6 +613,80 @@ public class SshTest {
 		t2 = new TestTerminal("exit\n", "secret");
 		assertEquals(4, run(t2, args("-t", "alice@localhost")), t2.stderr());
 		assertTrue(t2.stderr().contains("Pseudo-terminal will not be allocated"), t2.stderr());
+	}
+
+	/** A config file with the test settings for every host: jump hosts don't get -o options (as OpenSSH) */
+	private List<String> configArgs(String... more) throws IOException {
+		File cfg = write(new File(dir, "test_config"), "Host *\n"
+				+"  UserKnownHostsFile "+knownHosts()+"\n"
+				+"  GlobalKnownHostsFile none\n"
+				+"  IdentityAgent none\n"
+				+"  IdentitiesOnly yes\n"
+				+"  StrictHostKeyChecking accept-new\n");
+		List<String> a = new ArrayList<String>(Arrays.asList("-F", cfg.getPath(), "-p", String.valueOf(server.getLocalPort())));
+		a.addAll(Arrays.asList(more));
+		return a;
+	}
+
+	@Test
+	public void proxyJump() throws Exception {
+		start();
+		// The server is its own jump host: alice logs in to it, then (through it) to it again
+		String hop = "alice@localhost:"+server.getLocalPort();
+		TestTerminal t = new TestTerminal("", "secret", "secret");
+		assertEquals(0, run(t, configArgs("-J", hop, "alice@127.0.0.1", "whoami")), t.stderr());
+		assertEquals("alice", t.stdout());
+		assertEquals(Arrays.asList("Password: ", "Password: "), t.prompts, "the jump host, then the server");
+		// The server's key is known under its own name, not the proxy's port on 127.0.0.1
+		KnownHosts kh = new KnownHosts(knownHosts());
+		for (KeyPair hk : server.getHostKeys()) {
+			if( kh.check("127.0.0.1", server.getLocalPort(), hk.getPublic()) == KnownHosts.Result.TRUSTED ) {
+				return;
+			}
+		}
+		throw new AssertionError("127.0.0.1's key wasn't saved under its name");
+	}
+
+	@Test
+	public void proxyJumpFailures() throws Exception {
+		start();
+		String hop = "alice@localhost:"+server.getLocalPort();
+		int closed;
+		try (ServerSocket s = new ServerSocket(0)) {
+			closed = s.getLocalPort();
+		}
+		TestTerminal t = new TestTerminal("", "secret");
+		List<String> a = configArgs("-J", hop, "alice@127.0.0.1", "true");
+		a.set(a.indexOf("-p")+1, String.valueOf(closed));
+		assertEquals(255, run(t, a));
+		assertTrue(t.stderr().contains("localhost could not connect to 127.0.0.1 port "+closed), t.stderr());
+
+		// The jump host's login fails: so does the whole
+		t = new TestTerminal("", "wrong", "wrong", "wrong");
+		assertEquals(255, run(t, configArgs("-J", hop, "alice@127.0.0.1", "true")));
+		assertTrue(t.stderr().contains("alice@localhost: Permission denied"), t.stderr());
+	}
+
+	@Test
+	public void proxyCommand() throws Exception {
+		assumeTrue(new File("/bin/sh").canExecute() && hasNc(), "no nc");
+		start();
+		TestTerminal t = new TestTerminal("", "secret");
+		assertEquals(0, run(t, args("-o", "StrictHostKeyChecking=accept-new", "-o", "ProxyCommand nc %h %p", "alice@127.0.0.1", "whoami")), t.stderr());
+		assertEquals("alice", t.stdout());
+		t = new TestTerminal("", "secret");
+		assertEquals(255, run(t, args("-o", "ProxyCommand exit 1", "alice@127.0.0.1", "true")));
+		assertTrue(t.stderr().contains("ProxyCommand to 127.0.0.1 port"), t.stderr());
+	}
+
+	private static boolean hasNc() {
+		try {
+			Process p = new ProcessBuilder("sh", "-c", "command -v nc").redirectErrorStream(true).start();
+			p.getInputStream().readAllBytes();
+			return p.waitFor() == 0;
+		} catch (IOException | InterruptedException e) {
+			return false;
+		}
 	}
 
 	@Test

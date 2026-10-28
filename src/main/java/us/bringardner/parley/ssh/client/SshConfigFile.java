@@ -120,7 +120,7 @@ final class SshConfigFile {
 				default:
 					if( active && inFinal ) {
 						finalLines.add(new String[] {file+" line "+n, t, String.valueOf(user)});
-					} else if( active && !options.set(key, args) ) {
+					} else if( active && !options.set(key, key.equals("proxycommand") ? Arrays.asList(SshOptions.rawValue(t)) : args) ) {
 						if( !SshOptions.isIgnored(key) ) {
 							verbose.accept(file+" line "+n+": "+words.get(0)+" is not supported, ignored");
 						}
@@ -144,7 +144,8 @@ final class SshConfigFile {
 			List<String> words = SshOptions.tokenize(l[1]);
 			String key = words.get(0).toLowerCase(Locale.ROOT);
 			try {
-				if( !options.set(key, words.subList(1, words.size())) && !SshOptions.isIgnored(key) ) {
+				List<String> args = key.equals("proxycommand") ? Arrays.asList(SshOptions.rawValue(l[1])) : words.subList(1, words.size());
+				if( !options.set(key, args) && !SshOptions.isIgnored(key) ) {
 					verbose.accept(l[0]+": "+words.get(0)+" is not supported, ignored");
 				}
 			} catch (SshOptions.UsageException e) {

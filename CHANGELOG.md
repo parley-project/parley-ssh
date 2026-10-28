@@ -8,7 +8,7 @@
   checks host keys against `known_hosts` and asks about new hosts. It logs in with the agent, key files
   (asking for a passphrase only for a key the server accepts), keyboard-interactive and password. It gives
   shells a pseudo terminal with the local terminal in raw mode and window size changes sent, and supports
-  `~` escapes, `-L`/`-R` forwarding, agent forwarding, SendEnv/SetEnv and the remote exit status. See the
+  `~` escapes, jump hosts (`-J`, ProxyJump) and ProxyCommand, `-L`/`-R` forwarding, agent forwarding, SendEnv/SetEnv and the remote exit status. See the
   README's "The ssh command".
 - **`SshServer.main`: an SSH server run as a service** (systemd, launchd, a Windows service). Settings from
   the command line (which wins) and `parley-ssh.properties` in Parley's administrator folder (`/etc/parley`, Windows

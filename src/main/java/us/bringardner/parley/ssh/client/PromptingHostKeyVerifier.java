@@ -97,6 +97,32 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 		this.alias = alias;
 	}
 
+	/** The server's own name and port, when the connection is to a proxy's port on 127.0.0.1 */
+	private volatile String targetHost;
+	private volatile int targetPort;
+
+	void setTarget(String host, int port) {
+		this.targetHost = host;
+		this.targetPort = port;
+	}
+
+	/** The name keys are looked up and saved under: HostKeyAlias, else the server's (not the proxy's) */
+	private String keyHost(String host) {
+		String a = alias;
+		if( a != null ) {
+			return a;
+		}
+		String t = targetHost;
+		return t != null ? t : host;
+	}
+
+	private int keyPort(int port) {
+		if( alias != null ) {
+			return 22;
+		}
+		return targetHost != null ? targetPort : port;
+	}
+
 	/** @return true if a host key was refused (and why was reported) */
 	boolean failed() {
 		return failed;
@@ -104,8 +130,7 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 
 	@Override
 	public boolean verify(String host, int port, PublicKey key) throws IOException {
-		String a = alias;
-		boolean ret = a == null ? check(host, port, key) : check(a, 22, key);
+		boolean ret = check(keyHost(host), keyPort(port), key);
 		if( !ret ) {
 			failed = true;
 		}
@@ -218,10 +243,9 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 
 	@Override
 	public List<String> getKnownKeyTypes(String host, int port) {
-		if( alias != null ) {
-			host = alias;
-			port = 22;
-		}
+		int p = keyPort(port);
+		host = keyHost(host);
+		port = p;
 		List<String> ret = new ArrayList<String>();
 		for (KnownHosts k : files) {
 			for (String t : k.getKnownKeyTypes(host, port)) {
@@ -235,9 +259,8 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 
 	@Override
 	public boolean verifyCertificate(String host, int port, SshCertificate certificate) throws IOException {
-		String a = alias;
 		for (KnownHosts k : files) {
-			if( a == null ? k.verifyCertificate(host, port, certificate) : k.verifyCertificate(a, 22, certificate) ) {
+			if( k.verifyCertificate(keyHost(host), keyPort(port), certificate) ) {
 				return true;
 			}
 		}

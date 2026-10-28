@@ -145,6 +145,10 @@ final class SshOptions {
 	String kexAlgorithms;
 	String hostKeyAlgorithms;
 	String hostKeyAlias;
+	/** [user@]host[:port],... or "none" */
+	String proxyJump;
+	/** run by the shell, its stdin and stdout are the connection; or "none" */
+	String proxyCommand;
 
 	// ------------------------------------------------------------------ the command line
 
@@ -270,6 +274,7 @@ final class SshOptions {
 		case 'e': setIfUnset("escapechar", value); break;
 		case 'F': configFile = value; break;
 		case 'i': identityFiles.add(value); break;
+		case 'J': setIfUnset("proxyjump", value); break;
 		case 'L': localForwards.add(parseForward(value)); break;
 		case 'l': if( user == null ) user = value; break;
 		case 'm': setIfUnset("macs", value); break;
@@ -288,7 +293,8 @@ final class SshOptions {
 			throw new UsageException("bad -o option: "+text);
 		}
 		String key = words.get(0).toLowerCase(Locale.ROOT);
-		if( !set(key, words.subList(1, words.size())) && !isIgnored(key) ) {
+		List<String> args = key.equals("proxycommand") ? Arrays.asList(rawValue(text)) : words.subList(1, words.size());
+		if( !set(key, args) && !isIgnored(key) ) {
 			throw new UsageException("-o "+words.get(0)+" is not supported by this client");
 		}
 	}
@@ -333,6 +339,22 @@ final class SshOptions {
 		case "globalknownhostsfile": if( globalKnownHostsFiles == null ) globalKnownHostsFiles = new ArrayList<String>(args); return true;
 		case "hashknownhosts": if( hashKnownHosts == null ) hashKnownHosts = yesNo(key, v); return true;
 		case "hostkeyalias": if( hostKeyAlias == null ) hostKeyAlias = v; return true;
+		// As OpenSSH: the two exclude each other, the first one found wins
+		case "proxyjump":
+			if( proxyJump == null && proxyCommand == null ) {
+				if( !v.equalsIgnoreCase("none") ) {
+					for (String hop : v.split(",")) {
+						parseJump(hop);
+					}
+				}
+				proxyJump = v;
+			}
+			return true;
+		case "proxycommand":
+			if( proxyJump == null && proxyCommand == null ) {
+				proxyCommand = String.join(" ", args);
+			}
+			return true;
 		case "forwardagent": if( forwardAgent == null ) forwardAgent = v; return true;
 		case "localforward": localForwards.add(parseForward(String.join(":", args))); return true;
 		case "remoteforward": remoteForwards.add(parseForward(String.join(":", args))); return true;
@@ -479,6 +501,104 @@ final class SshOptions {
 			}
 		}
 		throw new UsageException("bad forwarding specification '"+spec+"' (use [bind_address:]port:host:hostport)");
+	}
+
+	/** One ProxyJump hop: {user or null, host, port or null}; [user@]host[:port], IPv6 in brackets */
+	static String[] parseJump(String hop) throws UsageException {
+		String h = hop.trim();
+		if( h.startsWith("ssh://") ) {
+			h = h.substring(6);
+			if( h.endsWith("/") ) {
+				h = h.substring(0, h.length()-1);
+			}
+		}
+		String user = null;
+		int at = h.lastIndexOf('@');
+		if( at >= 0 ) {
+			user = h.substring(0, at);
+			h = h.substring(at+1);
+		}
+		String port = null;
+		if( h.startsWith("[") ) {
+			int end = h.indexOf(']');
+			if( end < 0 ) {
+				throw new UsageException("bad ProxyJump host: "+hop);
+			}
+			if( end+1 < h.length() ) {
+				if( h.charAt(end+1) != ':' ) {
+					throw new UsageException("bad ProxyJump host: "+hop);
+				}
+				port = h.substring(end+2);
+			}
+			h = h.substring(1, end);
+		} else {
+			int colon = h.indexOf(':');
+			if( colon >= 0 && h.indexOf(':', colon+1) < 0 ) {
+				port = h.substring(colon+1);
+				h = h.substring(0, colon);
+			}
+		}
+		if( h.isEmpty() || (user != null && user.isEmpty()) ) {
+			throw new UsageException("bad ProxyJump host: "+hop);
+		}
+		if( port != null ) {
+			number("ProxyJump port", port, 1, 65535);
+		}
+		return new String[] {user, h, port};
+	}
+
+	/** A config line's or -o's value as written: what follows the keyword and its blanks or "=" */
+	static String rawValue(String line) {
+		String t = line.trim();
+		int i = 0;
+		while( i < t.length() && !Character.isWhitespace(t.charAt(i)) && t.charAt(i) != '=' ) {
+			i++;
+		}
+		while( i < t.length() && Character.isWhitespace(t.charAt(i)) ) {
+			i++;
+		}
+		if( i < t.length() && t.charAt(i) == '=' ) {
+			i++;
+		}
+		return t.substring(i).trim();
+	}
+
+	/**
+	 * The ProxyCommand to run, with OpenSSH's tokens expanded (%h %p %r %n %%), or null for none.
+	 */
+	String proxyCommandLine() {
+		if( proxyCommand == null || proxyCommand.equalsIgnoreCase("none") ) {
+			return null;
+		}
+		StringBuilder b = new StringBuilder();
+		for (int i = 0; i < proxyCommand.length(); i++) {
+			char c = proxyCommand.charAt(i);
+			if( c != '%' || i+1 == proxyCommand.length() ) {
+				b.append(c);
+				continue;
+			}
+			char t = proxyCommand.charAt(++i);
+			switch (t) {
+			case '%': b.append('%'); break;
+			case 'h': b.append(hostName); break;
+			case 'n': b.append(host); break;
+			case 'p': b.append(port); break;
+			case 'r': b.append(user); break;
+			default: b.append('%').append(t);
+			}
+		}
+		return b.toString();
+	}
+
+	/** The ProxyJump hops, first first; empty for none */
+	List<String> jumpHops() {
+		List<String> ret = new ArrayList<String>();
+		if( proxyJump != null && !proxyJump.equalsIgnoreCase("none") ) {
+			for (String hop : proxyJump.split(",")) {
+				ret.add(hop.trim());
+			}
+		}
+		return ret;
 	}
 
 	// ------------------------------------------------------------------ after the config files

@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.ConnectException;
+import java.net.InetAddress;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
@@ -80,7 +81,6 @@ public final class Ssh {
 	private final CliTerminal terminal;
 	private final boolean manageLogging;
 	private SshOptions options;
-	private SshAgent agent;
 	private volatile boolean disconnectRequested;
 	private volatile boolean rawMode;
 	private final List<PortForwarder> forwarders = new ArrayList<PortForwarder>();
@@ -131,13 +131,6 @@ public final class Ssh {
 			return connectAndRun(o);
 		} finally {
 			terminal.restore();
-			if( agent != null ) {
-				try {
-					agent.close();
-				} catch (IOException e) {
-					// closing anyway
-				}
-			}
 		}
 	}
 
@@ -222,61 +215,21 @@ public final class Ssh {
 
 	// ------------------------------------------------------------------ connect, log in, run
 
+	/** A failure already reported to the user */
+	private static final class Failed extends Exception {
+		private static final long serialVersionUID = 1L;
+	}
+
+	/** Most ProxyJump hops (a config that sends a jump host through itself would never end) */
+	private static final int MAX_HOPS = 8;
+
+	/** Clients, jump host sessions and proxies, closed at the end (last first) */
+	private final List<java.io.Closeable> toClose = new ArrayList<java.io.Closeable>();
+
 	private int connectAndRun(SshOptions o) {
 		PrintStream err = terminal.err();
-		try (SshClient client = new SshClient()) {
-			try {
-				configureAlgorithms(client.getAlgorithms(), o);
-			} catch (IllegalArgumentException e) {
-				err.println("ssh: "+e.getMessage());
-				return FAILED;
-			}
-			if( o.serverAliveInterval != null && o.serverAliveInterval > 0 ) {
-				client.setKeepAliveInterval(o.serverAliveInterval*1000L);
-			}
-			// No limit by default: the host key question may take a while to answer
-			client.setConnectTimeout(o.connectTimeout == null ? 0 : o.connectTimeout*1000L);
-			PromptingHostKeyVerifier verifier = new PromptingHostKeyVerifier(
-					PromptingHostKeyVerifier.files(o, o.userKnownHostsFiles),
-					PromptingHostKeyVerifier.files(o, o.globalKnownHostsFiles),
-					!Boolean.FALSE.equals(o.hashKnownHosts), o.strictHostKeyChecking, terminal, o.isBatch(), o.isQuiet());
-			verifier.setAlias(o.hostKeyAlias);
-			client.setHostKeyVerifier(verifier);
-
-			debug("Connecting to "+o.hostName+" port "+o.port+".");
-			ClientSession session;
-			try {
-				session = client.connectAndWait(o.hostName, o.port);
-			} catch (IOException e) {
-				if( verifier.failed() ) {
-					err.println("Host key verification failed.");
-				} else {
-					err.println(connectError(o, e));
-				}
-				return FAILED;
-			}
-			debug("Connected, server "+session.getPeerVersion()+", host key "+SshPublicKeys.fingerprint(session.getServerHostKey()));
-			if( o.serverAliveCountMax != null ) {
-				session.setMaxKeepAliveFailures(o.serverAliveCountMax);
-			}
-			// Asking for passwords takes as long as it takes
-			session.setAuthTimeout(0);
-			session.setBannerListener(text -> {
-				if( !o.isQuiet() ) {
-					err.print(text);
-					err.flush();
-				}
-			});
-
-			List<IClientAuthMethod> methods = authMethods(o);
-			try {
-				session.authenticateAndWait(o.user, methods.toArray(new IClientAuthMethod[0]));
-			} catch (IOException e) {
-				err.println(o.user+"@"+o.hostName+": Permission denied ("+authProblem(e)+").");
-				return FAILED;
-			}
-			debug("Authenticated to "+o.hostName+" as "+o.user+".");
-
+		try {
+			ClientSession session = open(o, 0);
 			if( !startForwarding(session, o) ) {
 				return FAILED;
 			}
@@ -287,6 +240,8 @@ public final class Ssh {
 				return 0;
 			}
 			return runSession(session, o);
+		} catch (Failed e) {
+			return FAILED;
 		} catch (IOException e) {
 			terminal.restore();
 			rawMode = false;
@@ -299,6 +254,139 @@ public final class Ssh {
 			for (PortForwarder f : forwarders) {
 				f.close();
 			}
+			for (int i = toClose.size()-1; i >= 0; i--) {
+				try {
+					toClose.get(i).close();
+				} catch (IOException e) {
+					// closing anyway
+				}
+			}
+		}
+	}
+
+	/**
+	 * Connect to o's host, directly, through its ProxyJump hosts (each opened the same way, with
+	 * its own settings) or through its ProxyCommand, check its host key and log in.
+	 *
+	 * @param hops how many jump hosts lead here
+	 */
+	private ClientSession open(SshOptions o, int hops) throws Failed, IOException {
+		PrintStream err = terminal.err();
+		SshClient client = new SshClient();
+		toClose.add(client);
+		try {
+			configureAlgorithms(client.getAlgorithms(), o);
+		} catch (IllegalArgumentException e) {
+			err.println("ssh: "+e.getMessage());
+			throw new Failed();
+		}
+		if( o.serverAliveInterval != null && o.serverAliveInterval > 0 ) {
+			client.setKeepAliveInterval(o.serverAliveInterval*1000L);
+		}
+		// No limit by default: the host key question may take a while to answer
+		client.setConnectTimeout(o.connectTimeout == null ? 0 : o.connectTimeout*1000L);
+		PromptingHostKeyVerifier verifier = new PromptingHostKeyVerifier(
+				PromptingHostKeyVerifier.files(o, o.userKnownHostsFiles),
+				PromptingHostKeyVerifier.files(o, o.globalKnownHostsFiles),
+				!Boolean.FALSE.equals(o.hashKnownHosts), o.strictHostKeyChecking, terminal, o.isBatch(), o.isQuiet());
+		verifier.setAlias(o.hostKeyAlias);
+		client.setHostKeyVerifier(verifier);
+
+		ProxyBridge bridge = null;
+		String via = null;
+		List<String> jumps = o.jumpHops();
+		String proxyCommand = o.proxyCommandLine();
+		if( !jumps.isEmpty() ) {
+			if( hops >= MAX_HOPS ) {
+				err.println("ssh: more than "+MAX_HOPS+" ProxyJump hosts (does a jump host's config send it through itself?)");
+				throw new Failed();
+			}
+			SshOptions j = jumpOptions(jumps.get(jumps.size()-1), jumps.subList(0, jumps.size()-1), o);
+			debug("Connecting to "+o.hostName+" port "+o.port+" through "+j.hostName+".");
+			ClientSession jumpHost = open(j, hops+1);
+			bridge = ProxyBridge.jump(jumpHost, o.hostName, o.port);
+			via = j.host;
+		} else if( proxyCommand != null ) {
+			debug("Connecting to "+o.hostName+" port "+o.port+" with ProxyCommand "+proxyCommand);
+			bridge = ProxyBridge.command(proxyCommand);
+			via = "ProxyCommand";
+		} else {
+			debug("Connecting to "+o.hostName+" port "+o.port+".");
+		}
+		if( bridge != null ) {
+			toClose.add(bridge);
+			// The host key is the server's, known under its name, not the proxy's port
+			verifier.setTarget(o.hostName, o.port);
+		}
+
+		ClientSession session;
+		try {
+			session = bridge == null ? client.connectAndWait(o.hostName, o.port)
+					: client.connectAndWait(InetAddress.getLoopbackAddress().getHostAddress(), bridge.getPort());
+		} catch (IOException e) {
+			if( verifier.failed() ) {
+				err.println("Host key verification failed.");
+			} else if( bridge != null ) {
+				IOException why = bridge.getFailure();
+				if( via.equals("ProxyCommand") ) {
+					err.println("ssh: ProxyCommand to "+o.hostName+" port "+o.port+" failed: "+message(why != null ? why : e));
+				} else {
+					err.println("ssh: "+via+" could not connect to "+o.hostName+" port "+o.port+": "+message(why != null ? why : e));
+				}
+			} else {
+				err.println(connectError(o, e));
+			}
+			throw new Failed();
+		}
+		debug("Connected to "+o.hostName+", server "+session.getPeerVersion()+", host key "+SshPublicKeys.fingerprint(session.getServerHostKey()));
+		if( o.serverAliveCountMax != null ) {
+			session.setMaxKeepAliveFailures(o.serverAliveCountMax);
+		}
+		// Asking for passwords takes as long as it takes
+		session.setAuthTimeout(0);
+		session.setBannerListener(text -> {
+			if( !o.isQuiet() ) {
+				err.print(text);
+				err.flush();
+			}
+		});
+
+		List<IClientAuthMethod> methods = authMethods(o);
+		try {
+			session.authenticateAndWait(o.user, methods.toArray(new IClientAuthMethod[0]));
+		} catch (IOException e) {
+			err.println(o.user+"@"+o.hostName+": Permission denied ("+authProblem(e)+").");
+			throw new Failed();
+		}
+		debug("Authenticated to "+o.hostName+" as "+o.user+".");
+		return session;
+	}
+
+	/**
+	 * The settings of a jump host, as OpenSSH gives them: the hop's user and port, the hops before
+	 * it, then the config files for its name; -v, -q and -F carry over.
+	 */
+	private SshOptions jumpOptions(String hop, List<String> before, SshOptions target) throws Failed, IOException {
+		try {
+			String[] h = SshOptions.parseJump(hop);
+			SshOptions j = new SshOptions();
+			j.host = h[1];
+			j.user = h[0];
+			j.port = h[2] == null ? null : Integer.valueOf(h[2]);
+			if( !before.isEmpty() ) {
+				j.proxyJump = String.join(",", before);
+			}
+			j.verbose = target.verbose;
+			j.configFile = target.configFile;
+			if( target.isQuiet() ) {
+				j.logLevel = "QUIET";
+			}
+			readConfig(j);
+			j.finish();
+			return j;
+		} catch (SshOptions.UsageException e) {
+			terminal.err().println("ssh: "+e.getMessage());
+			throw new Failed();
 		}
 	}
 
@@ -525,6 +613,11 @@ public final class Ssh {
 		return java.util.Base64.getEncoder().encodeToString(SshPublicKeys.encode(key));
 	}
 
+	private SshAgent remember(SshAgent a) {
+		toClose.add(a);
+		return a;
+	}
+
 	private SshAgent connectAgent(SshOptions o) {
 		String ia = o.identityAgent;
 		if( ia != null && ia.equalsIgnoreCase("none") ) {
@@ -535,17 +628,16 @@ public final class Ssh {
 				if( !SshAgent.isAvailable() ) {
 					return null;
 				}
-				agent = SshAgent.connect();
+				return remember(SshAgent.connect());
 			} else if( ia.startsWith("$") ) {
 				String path = System.getenv(ia.substring(1));
 				if( path == null || path.isEmpty() ) {
 					return null;
 				}
-				agent = SshAgent.connect(path);
+				return remember(SshAgent.connect(path));
 			} else {
-				agent = SshAgent.connect(o.expand(ia));
+				return remember(SshAgent.connect(o.expand(ia)));
 			}
-			return agent;
 		} catch (IOException | RuntimeException e) {
 			debug("No SSH agent: "+message(e));
 			return null;
