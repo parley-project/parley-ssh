@@ -240,10 +240,60 @@ abstract class CliTerminal {
 				}
 				return c.readPassword("%s", prompt);
 			}
-			if( WINDOWS || !DEV_TTY.canRead() || !DEV_TTY.canWrite() ) {
+			// stdin or stdout is redirected: ask on the terminal itself
+			if( !WINDOWS && DEV_TTY.canRead() && DEV_TTY.canWrite() ) {
+				try {
+					return devTty(prompt, echo);
+				} catch (IOException e) {
+					// No controlling terminal (e.g. started from an IDE)
+				}
+			}
+			// As OpenSSH without a terminal: SSH_ASKPASS
+			String askpass = System.getenv("SSH_ASKPASS");
+			if( askpass != null && !askpass.isEmpty() && !"never".equals(System.getenv("SSH_ASKPASS_REQUIRE")) ) {
+				return askpass(askpass, prompt);
+			}
+			// Last: stdin, as an IDE's console gives (what is typed may be shown)
+			return fromStdin(prompt);
+		}
+
+		private final Object stdinLock = new Object();
+		private boolean stdinNoted;
+
+		private char[] fromStdin(String prompt) {
+			synchronized (stdinLock) {
+				if( !stdinNoted ) {
+					stdinNoted = true;
+					err.println("(No terminal: reading the answer from stdin)");
+				}
+				err.print(prompt);
+				err.flush();
+				try {
+					char[] ret = readLine(in);
+					err.println();
+					return ret;
+				} catch (IOException e) {
+					return null;
+				}
+			}
+		}
+
+		private static char[] askpass(String program, String prompt) {
+			try {
+				Process p = new ProcessBuilder(program, prompt).redirectInput(ProcessBuilder.Redirect.INHERIT)
+						.redirectError(ProcessBuilder.Redirect.INHERIT).start();
+				char[] ret = readLine(p.getInputStream());
+				return p.waitFor() == 0 ? ret : null;
+			} catch (IOException e) {
+				return null;
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 				return null;
 			}
-			// stdin or stdout is redirected: ask on the terminal itself
+		}
+
+		/** @throws IOException if /dev/tty can't be opened */
+		private char[] devTty(String prompt, boolean echo) throws IOException {
 			try (FileInputStream tin = new FileInputStream(DEV_TTY); FileOutputStream tout = new FileOutputStream(DEV_TTY)) {
 				tout.write(prompt.getBytes(Charset.defaultCharset()));
 				tout.flush();
@@ -252,41 +302,51 @@ abstract class CliTerminal {
 					ttyEchoOff = true;
 					stty(true, "-echo");
 				}
-				byte[] line = new byte[256];
-				int len = 0;
 				try {
-					int b;
-					while( (b = tin.read()) >= 0 && b != '\n' ) {
-						if( b == '\r' ) {
-							continue;
-						}
-						if( len == line.length ) {
-							byte[] bigger = Arrays.copyOf(line, len*2);
-							Arrays.fill(line, (byte) 0);
-							line = bigger;
-						}
-						line[len++] = (byte) b;
-					}
-					if( b < 0 && len == 0 ) {
-						return null;
-					}
-					java.nio.CharBuffer chars = Charset.defaultCharset().decode(java.nio.ByteBuffer.wrap(line, 0, len));
-					char[] ret = new char[chars.remaining()];
-					chars.get(ret);
-					if( chars.hasArray() ) {
-						Arrays.fill(chars.array(), '\0');
-					}
-					return ret;
+					return readLine(tin);
 				} finally {
-					Arrays.fill(line, (byte) 0);
 					if( !echo ) {
 						stty(true, "echo");
 						ttyEchoOff = false;
 						tout.write('\n');
 					}
 				}
-			} catch (IOException e) {
-				return null;
+			}
+		}
+
+		/**
+		 * One line (without its line end) from in, read a byte at a time so nothing after it is taken.
+		 *
+		 * @return null at the end of input with nothing read
+		 */
+		private static char[] readLine(InputStream in) throws IOException {
+			byte[] line = new byte[256];
+			int len = 0;
+			try {
+				int b;
+				while( (b = in.read()) >= 0 && b != '\n' ) {
+					if( b == '\r' ) {
+						continue;
+					}
+					if( len == line.length ) {
+						byte[] bigger = Arrays.copyOf(line, len*2);
+						Arrays.fill(line, (byte) 0);
+						line = bigger;
+					}
+					line[len++] = (byte) b;
+				}
+				if( b < 0 && len == 0 ) {
+					return null;
+				}
+				java.nio.CharBuffer chars = Charset.defaultCharset().decode(java.nio.ByteBuffer.wrap(line, 0, len));
+				char[] ret = new char[chars.remaining()];
+				chars.get(ret);
+				if( chars.hasArray() ) {
+					Arrays.fill(chars.array(), '\0');
+				}
+				return ret;
+			} finally {
+				Arrays.fill(line, (byte) 0);
 			}
 		}
 

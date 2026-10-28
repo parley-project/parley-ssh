@@ -84,6 +84,7 @@ final class PromptedAuth {
 			char[] pw = terminal.prompt(prompt, false);
 			if( pw == null ) {
 				left = 0;
+				terminal.err().println("Can't read a password (no terminal, no SSH_ASKPASS, and stdin ended)");
 				return false;
 			}
 			try {
