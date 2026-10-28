@@ -121,34 +121,92 @@ Only a DNSSEC-validated answer proves anything, so `SshfpVerifier` reports unsig
 `us.bringardner.parley.ssh.client.Ssh` is a command-line client, used like OpenSSH's `ssh`:
 
 ```
-java -cp <parley-ssh and its dependencies> us.bringardner.parley.ssh.client.Ssh [options] [user@]host [command]
+java -cp <class path> us.bringardner.parley.ssh.client.Ssh [options] [user@]host [command]
 ```
 
-`mvn dependency:build-classpath` prints the class path. The client:
+The class path needs only parley-ssh, parley-net, parley-core and parley-io (their jars, or their
+`target/classes` folders); `mvn dependency:build-classpath` prints it. It runs on Java 11 or later, but
+Ed25519 keys need Java 15, and SSH agents on Unix (and agent forwarding) need Java 16.
 
-- Takes OpenSSH's options: `-p`, `-l`, `-i`, `-F`, `-o`, `-J`, `-t`/`-tt`/`-T`, `-N`, `-n`, `-s`, `-A`/`-a`, `-L`, `-R`,
-  `-C`, `-c`, `-m`, `-e`, `-q`, `-v`, `-V`.
-- Reads `~/.ssh/config` and `/etc/ssh/ssh_config`, or the `-F` file. It supports Host blocks, Match `all`/`host`/`originalhost`, Include, and
-  the usual keywords: HostName, User, Port, IdentityFile, CertificateFile, IdentitiesOnly, IdentityAgent,
-  StrictHostKeyChecking, UserKnownHostsFile, GlobalKnownHostsFile, HashKnownHosts, HostKeyAlias, ForwardAgent,
-  ProxyJump, ProxyCommand, LocalForward, RemoteForward, ExitOnForwardFailure, ServerAliveInterval/CountMax, ConnectTimeout, Compression,
-  RequestTTY, BatchMode, PreferredAuthentications, Password/Pubkey/KbdInteractiveAuthentication,
-  NumberOfPasswordPrompts, SendEnv, SetEnv, EscapeChar, LogLevel, Ciphers, MACs, KexAlgorithms, HostKeyAlgorithms.
-  Keywords for features it doesn't have are ignored (`-v` lists them).
-- Checks host keys against `known_hosts` as OpenSSH does. It asks about a new host, saves the key once you
-  accept it, and refuses a changed or revoked key.
-- Logs in with the SSH agent's keys, then the identity files, then keyboard-interactive, then password.
-  It asks for a key's passphrase only once the server has said it would accept that key (when the
-  `.pub` file is next to it), and asks for a password up to three times.
-- Reaches servers through jump hosts (`-J`, ProxyJump: one or more hops, each logging in with its own
-  settings from the config files) or a ProxyCommand (run by the shell; its stdin and stdout are the
-  connection). The server's host key is still checked under its own name.
-- Gives a shell, or `-t`, a pseudo terminal. The local terminal goes into raw mode (with `stty`) and window size
-  changes are sent to the server. `~.` disconnects, `~?` lists the escapes, `~#` the forwardings.
-- Exits with the remote command's status, or 255 if ssh itself failed.
+#### Supported
 
-Not in the command: `-D` (SOCKS), `-W`, `-f`, connection sharing (`-M`, `-S`),
-X11 (`-X`, `-Y`), and raw mode on Windows (there it works without a pseudo terminal unless `-tt` is given).
+**Command line**
+
+| Option | What it does |
+|---|---|
+| `-p port`, `-l user`, `user@host` | Where to log in |
+| `-i file` | Identity (key) file; may be repeated |
+| `-F file` | Config file to read instead of the usual ones (`none` for none) |
+| `-o Keyword=value` | Any supported config keyword (below); keywords for missing features are accepted and ignored |
+| `-J [user@]host[:port],...` | Jump hosts (ProxyJump); `-J none` turns a configured one off |
+| `-t`, `-tt`, `-T` | Pseudo terminal: if stdin is a terminal, always, never |
+| `-N`, `-n`, `-s` | No command (forwarding only), stdin from nowhere, the command is a subsystem (`-s host sftp`) |
+| `-L`, `-R` `[bind_address:]port:host:hostport` | Local and remote TCP port forwarding (`-R` with port 0 prints the port the server chose) |
+| `-A`, `-a` | Agent forwarding on, off |
+| `-C`, `-c ciphers`, `-m macs` | Compression; cipher and MAC lists (`+`, `-` and `^` prefixes as in OpenSSH) |
+| `-e char` | Escape character (`^X` form, or `none`) |
+| `-q`, `-v` (`-vv`), `-V` | Quiet, verbose (debug), version |
+| `-x`, `-k` | Accepted; they turn off X11 and GSSAPI, which aren't there anyway |
+
+Options may come before or after the host, and be grouped (`-tt`, `-vA`, `-p2222`); after the host,
+the first other word starts the command (or `--`).
+
+**Config files**: `~/.ssh/config` then `/etc/ssh/ssh_config` (or the `-F` file), first value wins as
+in OpenSSH. Host blocks (patterns, `!` negation), `Match all`, `Match host`, `Match originalhost`,
+`Match final`, and `Include` (wildcards in file and folder names). Keywords:
+
+| Area | Keywords |
+|---|---|
+| Where | HostName, User, Port, ProxyJump, ProxyCommand (`%h %p %r %n`), ConnectTimeout, ServerAliveInterval, ServerAliveCountMax |
+| Host keys | StrictHostKeyChecking, UserKnownHostsFile, GlobalKnownHostsFile, HashKnownHosts, HostKeyAlias, HostKeyAlgorithms |
+| Login | IdentityFile, CertificateFile, IdentitiesOnly, IdentityAgent, PreferredAuthentications, PubkeyAuthentication, KbdInteractiveAuthentication, PasswordAuthentication, NumberOfPasswordPrompts, BatchMode |
+| Session | RequestTTY, SendEnv, SetEnv, ForwardAgent, LocalForward, RemoteForward, ExitOnForwardFailure, EscapeChar, LogLevel |
+| Algorithms | Ciphers, MACs, KexAlgorithms, Compression |
+
+Tokens `%d %h %n %p %r %u %l` and `~` are expanded in file names.
+
+**Host keys**: checked against the known_hosts files as OpenSSH does: hashed names, wildcards,
+`@cert-authority` (host certificates) and `@revoked`. A new host is asked about (`yes`, `no` or its
+fingerprint) and saved, hashed unless `HashKnownHosts no`; a changed or revoked key is refused.
+StrictHostKeyChecking `ask` (default), `yes`, `accept-new`, `no`.
+
+**Login**, in OpenSSH's order:
+1. The SSH agent's keys (`SSH_AUTH_SOCK` or IdentityAgent).
+2. Key files: OpenSSH, PKCS#8 and PEM; RSA, ECDSA and Ed25519; with their certificates (`-cert.pub`,
+   CertificateFile). A passphrase is asked only once the server said it would take the key (when the
+   `.pub` file is next to it), three tries.
+3. keyboard-interactive, then password (NumberOfPasswordPrompts, default 3).
+
+Questions are asked on the terminal, on `/dev/tty` when stdin is redirected, else with `SSH_ASKPASS`,
+else on stdin (an IDE's console; a line says so).
+
+**Sessions**: a shell or `-t` gets a pseudo terminal with the local terminal in raw mode (`stty`) and
+window size changes sent; the terminal is put back on every exit. Escapes at the start of a line:
+`~.` disconnect, `~?` help, `~#` forwardings, `~~` a `~`. The exit status is the remote command's, 255
+when ssh failed (OpenSSH's messages). Without a terminal, a shell gets no prompt and a line says so.
+
+#### Not supported
+
+| Missing | Notes |
+|---|---|
+| `-D` / DynamicForward (SOCKS proxy) | |
+| `-W host:port` (stdio forwarding) | ProxyJump covers the usual use |
+| `-f` (background after login) | |
+| Connection sharing: `-M`, `-S`, `-O`, ControlMaster, ControlPath, ControlPersist | Accepted in config files and ignored: each run logs in again |
+| X11 forwarding: `-X`, `-Y`, ForwardX11 | Not in the library either (see below) |
+| Tunnel devices (`-w`), Unix socket forwarding, `-R` dynamic (SOCKS) forwarding | |
+| GSSAPI/Kerberos and host-based login (`-K`) | Servers that offer them still let you log in another way |
+| FIDO security key files (`-sk` keys), PKCS#11 | Security keys work through an agent |
+| `-4`, `-6`, `-b`, `-B`, `-E`, `-G`, `-g`, `-I`, `-Q`, `-y` | Rejected with "not supported" |
+| `Match exec`, `user`, `localuser`, `canonical`, `tagged`; CanonicalizeHostname | A Match block with these is skipped |
+| VerifyHostKeyDNS, UpdateHostKeys, CheckHostIP, RevokedHostKeys, AddKeysToAgent | Ignored; SSHFP is in the library (`HostKeyVerifiers.withLookup`) |
+| Password change requests from the server | That login method fails, the next is tried |
+| `~^Z`, `~C`, `~R`, `~B`, `~&` escapes | |
+| Raw mode and window size on Windows | Works without a pseudo terminal; `-tt` gives one, but keys go line by line |
+
+Differences from OpenSSH: `StrictHostKeyChecking no` still refuses a changed host key (OpenSSH connects
+with some features off); `IdentitiesOnly yes` doesn't use the agent at all (OpenSSH uses its keys that
+match the identity files); unknown keywords in `-o` are an error, in config files a `-v` message.
 
 ## Server
 
