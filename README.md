@@ -35,6 +35,7 @@ read; OpenSSH and PKCS#8 files are written.
 - exec, shells with a pseudo terminal, subsystems, local and remote port forwarding (`-L`, `-R`),
   agent forwarding (`-A`), keep-alives
 - SFTP versions 3 to 6, with several reads and writes in flight
+- An `ssh` command for the command line (`SshMain`, see [The ssh command](#the-ssh-command))
 
 **Server**
 - Login with password and keyboard-interactive through the access control list every Parley server
@@ -114,6 +115,37 @@ client.setHostKeyVerifier(HostKeyVerifiers.withLookup((host, blob) -> {
 
 Only a DNSSEC-validated answer proves anything, so `SshfpVerifier` reports unsigned answers as
 `INSECURE`. parley-dns's `SshfpTool` prints the records to publish for a server's keys.
+
+### The ssh command
+
+`us.bringardner.parley.ssh.client.SshMain` is a command-line client, used like OpenSSH's `ssh`:
+
+```
+java -cp <parley-ssh and its dependencies> us.bringardner.parley.ssh.client.SshMain [options] [user@]host [command]
+```
+
+`mvn dependency:build-classpath` prints the class path. The client:
+
+- Takes OpenSSH's options: `-p`, `-l`, `-i`, `-F`, `-o`, `-t`/`-tt`/`-T`, `-N`, `-n`, `-s`, `-A`/`-a`, `-L`, `-R`, `-C`,
+  `-c`, `-m`, `-e`, `-q`, `-v`, `-V`.
+- Reads `~/.ssh/config` and `/etc/ssh/ssh_config`, or the `-F` file. It supports Host blocks, Match `all`/`host`/`originalhost`, Include, and
+  the usual keywords: HostName, User, Port, IdentityFile, CertificateFile, IdentitiesOnly, IdentityAgent,
+  StrictHostKeyChecking, UserKnownHostsFile, GlobalKnownHostsFile, HashKnownHosts, HostKeyAlias, ForwardAgent,
+  LocalForward, RemoteForward, ExitOnForwardFailure, ServerAliveInterval/CountMax, ConnectTimeout, Compression,
+  RequestTTY, BatchMode, PreferredAuthentications, Password/Pubkey/KbdInteractiveAuthentication,
+  NumberOfPasswordPrompts, SendEnv, SetEnv, EscapeChar, LogLevel, Ciphers, MACs, KexAlgorithms, HostKeyAlgorithms.
+  Keywords for features it doesn't have are ignored (`-v` lists them).
+- Checks host keys against `known_hosts` as OpenSSH does. It asks about a new host, saves the key once you
+  accept it, and refuses a changed or revoked key.
+- Logs in with the SSH agent's keys, then the identity files, then keyboard-interactive, then password.
+  It asks for a key's passphrase only once the server has said it would accept that key (when the
+  `.pub` file is next to it), and asks for a password up to three times.
+- Gives a shell, or `-t`, a pseudo terminal. The local terminal goes into raw mode (with `stty`) and window size
+  changes are sent to the server. `~.` disconnects, `~?` lists the escapes, `~#` the forwardings.
+- Exits with the remote command's status, or 255 if ssh itself failed.
+
+Not in the command: `-D` (SOCKS), `-J`/ProxyJump, ProxyCommand, `-f`, connection sharing (`-M`, `-S`),
+X11 (`-X`, `-Y`), and raw mode on Windows (there it works without a pseudo terminal unless `-tt` is given).
 
 ## Server
 
