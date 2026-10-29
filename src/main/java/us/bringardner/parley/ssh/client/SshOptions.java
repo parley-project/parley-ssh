@@ -104,6 +104,8 @@ final class SshOptions {
 	int ttyFlags;
 	/** -h or --help */
 	boolean help;
+	/** -J was given */
+	private boolean jumpGiven;
 
 	// ------------------------------------------------------------------ settings (ssh_config keywords)
 
@@ -226,6 +228,13 @@ final class SshOptions {
 		if( target.isEmpty() ) {
 			throw new UsageException("no host given");
 		}
+		// As OpenSSH 9.6 (CVE-2023-51385): these end up in ProxyCommand's shell command line
+		if( !validHostName(target) ) {
+			throw new UsageException("hostname contains invalid characters");
+		}
+		if( o.user != null && !validUser(o.user) ) {
+			throw new UsageException("remote username contains invalid characters");
+		}
 		o.host = target;
 		if( i < args.length ) {
 			StringBuilder cmd = new StringBuilder();
@@ -274,7 +283,18 @@ final class SshOptions {
 		case 'e': setIfUnset("escapechar", value); break;
 		case 'F': configFile = value; break;
 		case 'i': identityFiles.add(value); break;
-		case 'J': setIfUnset("proxyjump", value); break;
+		case 'J':
+			// As OpenSSH
+			if( jumpGiven ) {
+				throw new UsageException("Only a single -J option is permitted");
+			}
+			if( proxyCommand != null ) {
+				throw new UsageException("Cannot specify -J with ProxyCommand");
+			}
+			jumpGiven = true;
+			proxyJump = null;
+			setIfUnset("proxyjump", value);
+			break;
 		case 'L': localForwards.add(parseForward(value)); break;
 		case 'l': if( user == null ) user = value; break;
 		case 'm': setIfUnset("macs", value); break;
@@ -538,13 +558,36 @@ final class SshOptions {
 				h = h.substring(0, colon);
 			}
 		}
-		if( h.isEmpty() || (user != null && user.isEmpty()) ) {
+		if( h.isEmpty() || (user != null && user.isEmpty()) || !validHostName(h) || (user != null && !validUser(user)) ) {
 			throw new UsageException("bad ProxyJump host: "+hop);
 		}
 		if( port != null ) {
 			number("ProxyJump port", port, 1, 65535);
 		}
 		return new String[] {user, h, port};
+	}
+
+	/** OpenSSH's valid_hostname: no leading -, no shell metacharacters, blanks or control characters */
+	static boolean validHostName(String s) {
+		return valid(s, "'`\"$\\;&<>|(){}");
+	}
+
+	/** OpenSSH's valid_ruser: as a host name, but a backslash is allowed (Windows domain users) */
+	static boolean validUser(String s) {
+		return valid(s, "'`\"$;&<>|(){}");
+	}
+
+	private static boolean valid(String s, String bad) {
+		if( s.isEmpty() || s.charAt(0) == '-' ) {
+			return false;
+		}
+		for (int i = 0; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if( bad.indexOf(c) >= 0 || Character.isWhitespace(c) || Character.isISOControl(c) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** A config line's or -o's value as written: what follows the keyword and its blanks or "=" */

@@ -35,15 +35,16 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.IntSupplier;
 
 import us.bringardner.parley.ssh.connection.ForwardingChannel;
 
 /**
  * How {@link Ssh} reaches a server through something other than its own TCP connection
  * (ProxyJump, ProxyCommand): the SSH client connects to a port on 127.0.0.1 that accepts
- * one connection, then stops listening, and the bytes go through the jump host's channel or
- * the command's stdin and stdout. Whatever carries them, the server is still checked by its own
- * host key, under its own name.
+ * its connection, then stops listening, and the bytes go through the jump host's channel or
+ * the command's stdin and stdout. Only a connection from our client's own port is taken.
+ * Whatever carries the bytes, the server is still checked by its own host key, under its own name.
  *
  * @author Tony Bringardner
  */
@@ -61,17 +62,44 @@ final class ProxyBridge implements Closeable {
 		return t;
 	});
 	private volatile IOException failure;
-	private volatile Process process;
+	private Process process;
+	private boolean closed;
+
+	/** @return false if the bridge was closed already (then the caller ends the process) */
+	private synchronized boolean setProcess(Process p) {
+		if( closed ) {
+			return false;
+		}
+		process = p;
+		return true;
+	}
 	private volatile Socket socket;
 
-	private ProxyBridge(Opener opener, int acceptTimeout) throws IOException {
-		listener = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
-		listener.setSoTimeout(acceptTimeout);
+	/**
+	 * @param clientPort the local port of our own SSH client's connection, or 0 while it isn't
+	 * known yet: only that connection is taken (another local user's is dropped), so no one else
+	 * gets the jump host's channel or the command, or the port once it is free
+	 */
+	private ProxyBridge(Opener opener, IntSupplier clientPort, int acceptTimeout) throws IOException {
+		listener = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
 		executor.execute(() -> {
+			long until = System.currentTimeMillis()+acceptTimeout;
 			try {
-				Socket s;
+				Socket s = null;
 				try {
-					s = listener.accept();
+					while( s == null ) {
+						int left = (int) (until-System.currentTimeMillis());
+						if( left <= 0 ) {
+							throw new java.net.SocketTimeoutException("No connection from the SSH client");
+						}
+						listener.setSoTimeout(left);
+						Socket c = listener.accept();
+						if( isOurs(c, clientPort, until) ) {
+							s = c;
+						} else {
+							closeQuietly(c);
+						}
+					}
 				} finally {
 					listener.close();
 				}
@@ -88,6 +116,24 @@ final class ProxyBridge implements Closeable {
 				}
 			}
 		});
+	}
+
+	/** c comes from this machine, from the port our client connected from */
+	private static boolean isOurs(Socket c, IntSupplier clientPort, long until) {
+		if( !c.getInetAddress().isLoopbackAddress() ) {
+			return false;
+		}
+		// The client knows its port once its connect completed, about when accept returns
+		int p;
+		while( (p = clientPort.getAsInt()) <= 0 && System.currentTimeMillis() < until ) {
+			try {
+				Thread.sleep(2);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return false;
+			}
+		}
+		return p > 0 && c.getPort() == p;
 	}
 
 	/** The port to connect to (on 127.0.0.1) */
@@ -115,7 +161,11 @@ final class ProxyBridge implements Closeable {
 				// closing anyway
 			}
 		}
-		Process p = process;
+		Process p;
+		synchronized (this) {
+			closed = true;
+			p = process;
+		}
 		if( p != null ) {
 			p.destroy();
 		}
@@ -123,17 +173,17 @@ final class ProxyBridge implements Closeable {
 	}
 
 	/** ProxyJump: through a direct-tcpip channel of the jump host's session */
-	static ProxyBridge jump(ClientSession jumpHost, String host, int port) throws IOException {
+	static ProxyBridge jump(ClientSession jumpHost, String host, int port, IntSupplier clientPort) throws IOException {
 		ProxyBridge[] self = new ProxyBridge[1];
 		self[0] = new ProxyBridge(s -> {
 			ForwardingChannel ch = jumpHost.openDirectTcpip(host, port);
 			ch.bridge(s, self[0].executor);
-		}, 60000);
+		}, clientPort, 60000);
 		return self[0];
 	}
 
 	/** ProxyCommand: through a command's stdin and stdout (run by the shell); its stderr is ours */
-	static ProxyBridge command(String command) throws IOException {
+	static ProxyBridge command(String command, IntSupplier clientPort) throws IOException {
 		ProxyBridge[] self = new ProxyBridge[1];
 		self[0] = new ProxyBridge(s -> {
 			ProcessBuilder pb;
@@ -145,13 +195,16 @@ final class ProxyBridge implements Closeable {
 			}
 			pb.redirectError(ProcessBuilder.Redirect.INHERIT);
 			Process p = pb.start();
-			self[0].process = p;
+			if( !self[0].setProcess(p) ) {
+				p.destroy();
+				throw new IOException("closed");
+			}
 			InputStream fromSocket = s.getInputStream();
 			OutputStream toSocket = s.getOutputStream();
 			// The command's output ends: so does the connection. The client closes: the command's stdin ends.
 			self[0].executor.execute(() -> copy(p.getInputStream(), toSocket, () -> closeQuietly(s)));
 			self[0].executor.execute(() -> copy(fromSocket, p.getOutputStream(), () -> closeQuietly(p.getOutputStream())));
-		}, 60000);
+		}, clientPort, 60000);
 		return self[0];
 	}
 

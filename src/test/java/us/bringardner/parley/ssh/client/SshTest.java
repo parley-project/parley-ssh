@@ -20,6 +20,8 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -169,7 +171,7 @@ public class SshTest {
 		assertEquals(Arrays.asList("a", "b@c:2"), o.jumpHops());
 		assertNull(o.proxyCommand, "the first of ProxyJump and ProxyCommand wins");
 
-		o = SshOptions.parse("-o", "ProxyCommand=ssh -W \"[%h]:%p\" gw %%", "-J", "a", "-l", "u", "-p", "2", "target");
+		o = SshOptions.parse("-o", "ProxyCommand=ssh -W \"[%h]:%p\" gw %%", "-o", "ProxyJump a", "-l", "u", "-p", "2", "target");
 		o.finish();
 		assertEquals("ssh -W \"[target]:2\" gw %", o.proxyCommandLine(), "as written (quotes kept), tokens expanded");
 		assertTrue(o.jumpHops().isEmpty());
@@ -183,6 +185,58 @@ public class SshTest {
 		o.finish();
 		assertEquals("/usr/bin/nc  \"t\"   22", o.proxyCommandLine());
 		assertTrue(o.jumpHops().isEmpty());
+	}
+
+	@Test
+	public void hostAndUserNamesAreChecked() throws Exception {
+		// As OpenSSH 9.6 (CVE-2023-51385): they may end up in a ProxyCommand's shell command
+		for (String bad : new String[] {"$(touch x)", "a;b", "`id`", "-oProxyCommand=x", "a b", "a|b", "a\nb"}) {
+			assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("--", bad, "true"), bad);
+		}
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("$(id)@host"));
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("-l", "a;b", "host"));
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("-J", "$(id)", "host"));
+		assertEquals("DOM\\user", SshOptions.parse("-l", "DOM\\user", "host").user);
+		assertEquals("fe80::1%eth0", SshOptions.parse("fe80::1%eth0").host);
+
+		// The reviewer's case: nothing runs
+		File marker = new File(dir, "pwned");
+		TestTerminal t = new TestTerminal("");
+		assertEquals(255, run(t, Arrays.asList("-F", "none", "-o", "ProxyCommand=true %h", "$(touch "+marker+")", "true")));
+		assertTrue(t.stderr().contains("hostname contains invalid characters"), t.stderr());
+		assertFalse(marker.exists());
+	}
+
+	@Test
+	public void jumpOptionRules() throws Exception {
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("-J", "a", "-J", "b", "host"), "only one -J");
+		assertThrows(SshOptions.UsageException.class, () -> SshOptions.parse("-o", "ProxyCommand=x", "-J", "a", "host"));
+		// -J first: a later ProxyCommand is ignored (as OpenSSH)
+		SshOptions o = SshOptions.parse("-J", "a", "-o", "ProxyCommand=x", "host");
+		assertEquals(Arrays.asList("a"), o.jumpHops());
+		assertNull(o.proxyCommand);
+	}
+
+	@Test
+	public void bridgeTakesOnlyOurConnection() throws Exception {
+		assumeTrue(new File("/bin/sh").canExecute(), "no shell");
+		InetAddress lo = InetAddress.getLoopbackAddress();
+		try (Socket ours = new Socket()) {
+			ours.bind(new InetSocketAddress(lo, 0));
+			int ourPort = ours.getLocalPort();
+			try (ProxyBridge b = ProxyBridge.command("cat", () -> ourPort)) {
+				// Another local program connects first: dropped, and the bridge goes on listening
+				try (Socket other = new Socket(lo, b.getPort())) {
+					other.setSoTimeout(5000);
+					assertEquals(-1, other.getInputStream().read(), "dropped");
+				}
+				ours.connect(new InetSocketAddress(lo, b.getPort()));
+				ours.setSoTimeout(5000);
+				ours.getOutputStream().write("through\n".getBytes(StandardCharsets.UTF_8));
+				assertEquals("through", new BufferedReader(new InputStreamReader(ours.getInputStream(), StandardCharsets.UTF_8)).readLine());
+				assertNull(b.getFailure());
+			}
+		}
 	}
 
 	@Test

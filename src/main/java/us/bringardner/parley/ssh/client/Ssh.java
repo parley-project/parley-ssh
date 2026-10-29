@@ -272,8 +272,29 @@ public final class Ssh {
 	 */
 	private ClientSession open(SshOptions o, int hops) throws Failed, IOException {
 		PrintStream err = terminal.err();
-		SshClient client = new SshClient();
-		toClose.add(client);
+		// The session it makes, so a proxy bridge knows our connection's port
+		java.util.concurrent.atomic.AtomicReference<ClientSession> made = new java.util.concurrent.atomic.AtomicReference<ClientSession>();
+		SshClient client = new SshClient() {
+			@Override
+			protected ClientSession newSession(String host, int port) {
+				ClientSession cs = super.newSession(host, port);
+				made.set(cs);
+				return cs;
+			}
+		};
+		// Registered (for closing) once the proxies it needs are: closed before them, the target first
+		try {
+			return open(o, hops, client, made);
+		} finally {
+			if( !toClose.contains(client) ) {
+				client.close();
+			}
+		}
+	}
+
+	private ClientSession open(SshOptions o, int hops, SshClient client,
+			java.util.concurrent.atomic.AtomicReference<ClientSession> made) throws Failed, IOException {
+		PrintStream err = terminal.err();
 		try {
 			configureAlgorithms(client.getAlgorithms(), o);
 		} catch (IllegalArgumentException e) {
@@ -304,11 +325,11 @@ public final class Ssh {
 			SshOptions j = jumpOptions(jumps.get(jumps.size()-1), jumps.subList(0, jumps.size()-1), o);
 			debug("Connecting to "+o.hostName+" port "+o.port+" through "+j.hostName+".");
 			ClientSession jumpHost = open(j, hops+1);
-			bridge = ProxyBridge.jump(jumpHost, o.hostName, o.port);
+			bridge = ProxyBridge.jump(jumpHost, o.hostName, o.port, () -> localPort(made.get()));
 			via = j.host;
 		} else if( proxyCommand != null ) {
 			debug("Connecting to "+o.hostName+" port "+o.port+" with ProxyCommand "+proxyCommand);
-			bridge = ProxyBridge.command(proxyCommand);
+			bridge = ProxyBridge.command(proxyCommand, () -> localPort(made.get()));
 			via = "ProxyCommand";
 		} else {
 			debug("Connecting to "+o.hostName+" port "+o.port+".");
@@ -318,6 +339,7 @@ public final class Ssh {
 			// The host key is the server's, known under its name, not the proxy's port
 			verifier.setTarget(o.hostName, o.port);
 		}
+		toClose.add(client);
 
 		ClientSession session;
 		try {
@@ -368,6 +390,15 @@ public final class Ssh {
 		}
 		debug("Authenticated to "+o.hostName+" as "+o.user+".");
 		return session;
+	}
+
+	/** The local port of a session's TCP connection, 0 while it isn't connected */
+	private static int localPort(ClientSession s) {
+		if( s == null || s.getConnection() == null ) {
+			return 0;
+		}
+		java.net.SocketAddress a = s.getConnection().getLocalAddress();
+		return a instanceof java.net.InetSocketAddress ? ((java.net.InetSocketAddress) a).getPort() : 0;
 	}
 
 	/**
