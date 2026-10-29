@@ -60,6 +60,24 @@
 				<groupId>org.jacoco</groupId>
 				<artifactId>jacoco-maven-plugin</artifactId>
 			</plugin>
+			<!-- META-INF/parley/launcher.list in the jar: how parley-launcher runs it, and every jar it
+			     needs with its SHA-256 (parley-launcher add NAME COORDINATES [MAIN]) -->
+			<plugin>
+				<groupId>us.bringardner.parley</groupId>
+				<artifactId>parley-launcher-maven-plugin</artifactId>
+				<version>${project.version}</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>list</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<!-- (pssh: parley-launcher add pssh us.bringardner.parley:parley-ssh:VERSION) -->
+					<mainClass>us.bringardner.parley.ssh.client.Ssh</mainClass>
+				</configuration>
+			</plugin>
 		</plugins>
 
 		<pluginManagement>
