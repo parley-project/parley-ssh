@@ -461,10 +461,33 @@ public class SshTest {
 		for (KeyPair hk : server.getHostKeys()) {
 			kh.add("localhost", server.getLocalPort(), otherKey(hk.getPublic()));
 		}
+		byte[] before = Files.readAllBytes(knownHosts().toPath());
+		// ask (the default), yes, accept-new: refused
+		for (String mode : new String[] {"ask", "yes", "accept-new"}) {
+			t = new TestTerminal("", "yes", "secret");
+			assertEquals(255, run(t, args("-o", "StrictHostKeyChecking="+mode, "alice@localhost", "whoami")), mode);
+			assertTrue(t.stderr().contains("REMOTE HOST IDENTIFICATION HAS CHANGED"), t.stderr());
+			assertTrue(t.stderr().contains("Host key verification failed."), t.stderr());
+			assertTrue(t.prompts.isEmpty(), mode+": "+t.prompts);
+		}
+
+		// no: as OpenSSH, it goes on, but no password is sent to what may be an impostor
 		t = new TestTerminal("", "secret");
 		assertEquals(255, run(t, args("-o", "StrictHostKeyChecking=no", "alice@localhost", "whoami")));
 		assertTrue(t.stderr().contains("REMOTE HOST IDENTIFICATION HAS CHANGED"), t.stderr());
-		assertTrue(t.prompts.isEmpty());
+		assertTrue(t.stderr().contains("Password authentication is disabled to avoid man-in-the-middle attacks."), t.stderr());
+		assertTrue(t.prompts.isEmpty(), "no password or keyboard-interactive question: "+t.prompts);
+		assertTrue(t.stderr().contains("alice@localhost: Permission denied"), t.stderr());
+
+		// A key login works, with no forwarding
+		File key = new File(dir, "id_ecdsa");
+		SshKeyWriter.write(alicesKey, key, "alice@test");
+		t = new TestTerminal("");
+		assertEquals(0, run(t, args("-o", "StrictHostKeyChecking=no", "-i", key.getPath(), "-A", "-L", "0:localhost:1",
+				"alice@localhost", "whoami")), t.stderr());
+		assertEquals("alice", t.stdout());
+		assertTrue(t.stderr().contains("Port forwarding is disabled"), t.stderr());
+		assertArrayEquals(before, Files.readAllBytes(knownHosts().toPath()), "the known key is left as it was");
 	}
 
 	/** A new key of the same type */

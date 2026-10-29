@@ -351,6 +351,14 @@ public final class Ssh {
 			}
 		});
 
+		if( verifier.untrusted() ) {
+			// The changed host key may be an impostor's (see PromptingHostKeyVerifier)
+			o.passwordAuthentication = Boolean.FALSE;
+			o.kbdInteractiveAuthentication = Boolean.FALSE;
+			o.forwardAgent = "no";
+			o.localForwards.clear();
+			o.remoteForwards.clear();
+		}
 		List<IClientAuthMethod> methods = authMethods(o);
 		try {
 			session.authenticateAndWait(o.user, methods.toArray(new IClientAuthMethod[0]));

@@ -123,6 +123,16 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 		return targetHost != null ? targetPort : port;
 	}
 
+	private volatile boolean untrusted;
+
+	/**
+	 * @return true if the connection went on with a changed host key (StrictHostKeyChecking no):
+	 * then no password or keyboard-interactive login, no agent or port forwarding
+	 */
+	boolean untrusted() {
+		return untrusted;
+	}
+
 	/** @return true if a host key was refused (and why was reported) */
 	boolean failed() {
 		return failed;
@@ -186,6 +196,16 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 			err.println(fp+".");
 			err.println("Please contact your system administrator.");
 			err.println("Add correct host key in "+changedIn.getFile()+" to get rid of this message.");
+			if( mode.equals("no") ) {
+				// As OpenSSH: go on, but give a possible impostor nothing it could use
+				err.println("Password authentication is disabled to avoid man-in-the-middle attacks.");
+				err.println("Keyboard-interactive authentication is disabled to avoid man-in-the-middle attacks.");
+				err.println("Agent forwarding is disabled to avoid man-in-the-middle attacks.");
+				err.println("Port forwarding is disabled to avoid man-in-the-middle attacks.");
+				// The known key stays as it is
+				untrusted = true;
+				return true;
+			}
 			err.println("Host key for "+name+" has changed and you have requested strict checking.");
 			return false;
 		}

@@ -167,8 +167,11 @@ Tokens `%d %h %n %p %r %u %l` and `~` are expanded in file names.
 
 **Host keys**: checked against the known_hosts files as OpenSSH does: hashed names, wildcards,
 `@cert-authority` (host certificates) and `@revoked`. A new host is asked about (`yes`, `no` or its
-fingerprint) and saved, hashed unless `HashKnownHosts no`; a changed or revoked key is refused.
-StrictHostKeyChecking `ask` (default), `yes`, `accept-new`, `no`.
+fingerprint) and saved, hashed unless `HashKnownHosts no`. A revoked key is always refused, and so is
+a changed key, except with `StrictHostKeyChecking no`: then, as OpenSSH, the connection goes on after
+the warning but with password and keyboard-interactive login, agent forwarding and port forwarding
+turned off (a key login still works), and the known key is left as it is. StrictHostKeyChecking `ask`
+(default), `yes`, `accept-new`, `no`.
 
 **Login**, in OpenSSH's order:
 1. The SSH agent's keys (`SSH_AUTH_SOCK` or IdentityAgent).
@@ -204,8 +207,7 @@ when ssh failed (OpenSSH's messages). Without a terminal, a shell gets no prompt
 | `~^Z`, `~C`, `~R`, `~B`, `~&` escapes | |
 | Raw mode and window size on Windows | Works without a pseudo terminal; `-tt` gives one, but keys go line by line |
 
-Differences from OpenSSH: `StrictHostKeyChecking no` still refuses a changed host key (OpenSSH connects
-with some features off); `IdentitiesOnly yes` doesn't use the agent at all (OpenSSH uses its keys that
+Differences from OpenSSH: `IdentitiesOnly yes` doesn't use the agent at all (OpenSSH uses its keys that
 match the identity files); unknown keywords in `-o` are an error, in config files a `-v` message.
 
 ## Server
