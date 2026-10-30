@@ -240,6 +240,7 @@ class on the class path, each named with the server's prefix, `parley.ssh`: the 
 | `hostKeyDir` | Where host keys are made and kept (with `*-cert.pub` host certificates) | the working directory |
 | `keyStoreName`, `keyStorePassword`, `keyStoreType` | Host keys from a key store's RSA and EC entries instead of `hostKeyDir` | not used |
 | `shellFactory` | Class name of the `IShellFactory` that answers "shell" requests, or `none` | fsh when it is on the class path, else none (shells refused) |
+| `shellCommand` | A program to run as the shell, with its arguments (split at blanks, `"double quotes"` keep blanks together), e.g. `/opt/fsh/bin/fsh -i -l`. It runs on a real pseudo terminal when the client asks for one and pty4j is on the class path, so it has a controlling terminal and job control. Used when `shellFactory` is not set | not set |
 | `revokedKeys` | A key revocation list or list of keys that can't log in | none |
 | `maxLoginAttempts` | Failed logins before the connection is closed | 6 |
 | `loginFailureDelay` | Milliseconds before a failed login is answered | 250 |

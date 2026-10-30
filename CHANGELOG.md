@@ -4,6 +4,11 @@
 
 ### Added
 
+- **`shellCommand` setting: a program to run as the shell.** `parley.ssh.shellCommand=/opt/fsh/bin/fsh -i -l` runs
+  that program with `ProcessShellFactory`, on a real pseudo terminal when the client asks for one and pty4j is
+  on the class path, so the shell has a controlling terminal and job control (an in-process shell such as fsh's
+  `FshShellFactory` has neither under a service). `ProcessShellFactory` takes the command line as a second
+  constructor argument.
 - **`Ssh`: an `ssh` command** with OpenSSH's options and `ssh_config` files (Host, Match, Include). It
   checks host keys against `known_hosts` and asks about new hosts. It logs in with the agent, key files
   (asking for a passphrase only for a key the server accepts), keyboard-interactive and password. It gives

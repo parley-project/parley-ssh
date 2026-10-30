@@ -93,6 +93,13 @@ public class SshServer extends NioServer {
 	 * for no shell; without it, fsh ({@value #DEFAULT_SHELL_FACTORY}) when it is on the class path
 	 */
 	public static final String PROPERTY_SHELL_FACTORY = "shellFactory";
+	/**
+	 * A program to run as the shell, with its arguments (split at blanks, "double quotes" keep blanks
+	 * together), run by {@link ProcessShellFactory}: on a real pseudo terminal when the client asks for
+	 * one and pty4j is on the class path, so it has job control. Used when no
+	 * {@value #PROPERTY_SHELL_FACTORY} is set. For fsh as a separate program: "/opt/fsh/bin/fsh -i -l".
+	 */
+	public static final String PROPERTY_SHELL_COMMAND = "shellCommand";
 	/** The shell used when none is configured and it is on the class path: fsh, the FileSource Shell */
 	public static final String DEFAULT_SHELL_FACTORY = "us.bringardner.fsh.ssh.FshShellFactory";
 	/** A KRL or list of public keys (OpenSSH's RevokedKeys): those keys and certificates can't log in */
@@ -341,6 +348,10 @@ public class SshServer extends NioServer {
 							logError("Can't configure shell factory class='"+tmp+"'", e);
 							throw new IllegalStateException("Can't configure shell factory class='"+tmp+"'", e);
 						}
+					} else if( shellCommandSetting() != null ) {
+						List<String> line = splitCommandLine(shellCommandSetting());
+						shellFactory = new ProcessShellFactory(null, line);
+						logInfo("Server "+getName()+" runs "+line+" as its shell"+(ProcessCommandFactory.isPtySupported() ? ", on a pseudo terminal" : " (no pty4j: without a pseudo terminal)"));
 					} else {
 						shellFactory = defaultShellFactory();
 						if( shellFactory == null ) {
@@ -354,6 +365,48 @@ public class SshServer extends NioServer {
 			}
 		}
 		return shellFactory;
+	}
+
+	private String shellCommandSetting() {
+		String tmp = getProperty(propertyName(PROPERTY_SHELL_COMMAND));
+		return tmp == null || tmp.trim().isEmpty() ? null : tmp.trim();
+	}
+
+	/**
+	 * Split a command line at blanks; double quotes keep blanks together and a backslash makes
+	 * the next character plain (no variables or other shell syntax: the program is run as it is).
+	 */
+	static List<String> splitCommandLine(String line) {
+		List<String> ret = new ArrayList<String>();
+		StringBuilder b = new StringBuilder();
+		boolean inWord = false;
+		boolean quoted = false;
+		for (int i = 0; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if( c == '\\' && i+1 < line.length() ) {
+				b.append(line.charAt(++i));
+				inWord = true;
+			} else if( c == '"' ) {
+				quoted = !quoted;
+				inWord = true;
+			} else if( Character.isWhitespace(c) && !quoted ) {
+				if( inWord ) {
+					ret.add(b.toString());
+					b.setLength(0);
+					inWord = false;
+				}
+			} else {
+				b.append(c);
+				inWord = true;
+			}
+		}
+		if( quoted ) {
+			throw new IllegalStateException(PROPERTY_PREFIX+"."+PROPERTY_SHELL_COMMAND+": a double quote is not closed: "+line);
+		}
+		if( inWord ) {
+			ret.add(b.toString());
+		}
+		return ret;
 	}
 
 	/**

@@ -26,6 +26,7 @@
 package us.bringardner.parley.ssh.server;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -45,6 +46,8 @@ import java.util.List;
  */
 public class ProcessShellFactory extends ProcessCommandFactory implements IShellFactory {
 
+	private final List<String> commandLine;
+
 	/**
 	 * The shell starts in the server's working directory.
 	 */
@@ -56,13 +59,26 @@ public class ProcessShellFactory extends ProcessCommandFactory implements IShell
 	 * @param directory the shell's working directory, null for the server's
 	 */
 	public ProcessShellFactory(File directory) {
+		this(directory, null);
+	}
+
+	/**
+	 * @param directory the shell's working directory, null for the server's
+	 * @param commandLine the program to run as the shell and its arguments (for a shell that is not
+	 * the account's login shell, such as fsh: "/opt/fsh/bin/fsh", "-l"), null for the login shell
+	 */
+	public ProcessShellFactory(File directory, List<String> commandLine) {
 		super(directory);
+		this.commandLine = commandLine == null || commandLine.isEmpty() ? null : new ArrayList<String>(commandLine);
 	}
 
 	/**
 	 * @return the shell's command line
 	 */
 	protected List<String> shellCommandLine() {
+		if( commandLine != null ) {
+			return commandLine;
+		}
 		if( isWindows() ) {
 			return Arrays.asList("cmd.exe");
 		}
