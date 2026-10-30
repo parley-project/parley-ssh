@@ -46,6 +46,7 @@ import us.bringardner.parley.ssh.sftp.SftpClient;
 import us.bringardner.parley.ssh.sftp.SftpConstants;
 import us.bringardner.parley.ssh.sftp.SftpDirEntry;
 import us.bringardner.parley.ssh.sftp.SftpException;
+import us.bringardner.parley.ssh.sftp.SftpHandle;
 
 /**
  * The SFTP server on FileSource: the library's client (every operation, the root as a
@@ -110,6 +111,56 @@ public class SftpServerTest {
 	/** Windows has no POSIX owner, group and other permission bits. */
 	private static boolean windows() {
 		return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+	}
+
+	/** The mode of a file or directory on disk (owner, group and other bits) */
+	private static int diskMode(File f) throws IOException {
+		int mode = 0;
+		for( java.nio.file.attribute.PosixFilePermission p : Files.getPosixFilePermissions(f.toPath()) ) {
+			mode |= 0400 >> p.ordinal();
+		}
+		return mode;
+	}
+
+	/**
+	 * What a client asks for when it creates a file or directory is cut by the umask, as OpenSSH's
+	 * sftp-server does (OpenSSH's sftp client asks for 0777 for a directory), but a chmod after
+	 * that is the client's own and is not.
+	 */
+	@Test
+	public void createdModesAreCutByTheUmask() throws Exception {
+		org.junit.jupiter.api.Assumptions.assumeFalse(windows());
+		File root = startOnDisk();
+		// what the operating system gives a new directory and file here: 0777 and 0666, less the umask
+		File d0 = new File(dir, "baseline-dir");
+		File f0 = new File(dir, "baseline-file");
+		assertTrue(d0.mkdir());
+		assertTrue(f0.createNewFile());
+		int dirMask = diskMode(d0);
+		int fileMask = diskMode(f0);
+		try (SftpClient sftp = sftp()) {
+			sftp.mkdir("/d", SftpAttrs.NONE.withPermissions(0777));
+			assertEquals(dirMask, diskMode(new File(root, "d")), "mkdir with 0777");
+
+			try (SftpHandle h = sftp.open("/f", SftpConstants.SSH_FXF_WRITE|SftpConstants.SSH_FXF_CREAT, SftpAttrs.NONE.withPermissions(0666))) {
+				// created, closed below
+			}
+			assertEquals(fileMask, diskMode(new File(root, "f")), "create with 0666");
+
+			// the request can be narrower than the umask allows, and then it is what was asked for
+			sftp.mkdir("/private", SftpAttrs.NONE.withPermissions(0700));
+			assertEquals(0700, diskMode(new File(root, "private")));
+
+			// an executable file keeps its owner's execute bit; the others' follow the umask
+			try (SftpHandle h = sftp.open("/x", SftpConstants.SSH_FXF_WRITE|SftpConstants.SSH_FXF_CREAT, SftpAttrs.NONE.withPermissions(0777))) {
+				// created
+			}
+			assertEquals(0777 & ~((~fileMask & 0666) | ((~fileMask & 0444) >> 2)), diskMode(new File(root, "x")));
+
+			// an explicit chmod is the client's and is not cut
+			sftp.setStat("/d", SftpAttrs.NONE.withPermissions(0777));
+			assertEquals(0777, diskMode(new File(root, "d")), "chmod 0777");
+		}
 	}
 
 	@Test

@@ -488,7 +488,7 @@ public class SftpServer extends AbstractCommand {
 				throw new Status(SftpConstants.SSH_FX_FILE_ALREADY_EXISTS, "File exists");
 			}
 			if( attrs.hasPermissions() ) {
-				setPermissions(f, attrs.getPermissions());
+				setCreatedPermissions(f, attrs.getPermissions());
 			}
 		} else if( creat && (flags & SftpConstants.SSH_FXF_EXCL) != 0 ) {
 			throw new Status(SftpConstants.SSH_FX_FILE_ALREADY_EXISTS, "File exists");
@@ -633,6 +633,37 @@ public class SftpServer extends AbstractCommand {
 		ok(id);
 	}
 
+	/** The owner, group and other read, write and execute bits of a file, as in a mode */
+	private static int permissionBits(FileSource f) throws IOException {
+		return (f.canOwnerRead() ? 0400 : 0) | (f.canOwnerWrite() ? 0200 : 0) | (f.canOwnerExecute() ? 0100 : 0)
+				| (f.canGroupRead() ? 0040 : 0) | (f.canGroupWrite() ? 0020 : 0) | (f.canGroupExecute() ? 0010 : 0)
+				| (f.canOtherRead() ? 0004 : 0) | (f.canOtherWrite() ? 0002 : 0) | (f.canOtherExecute() ? 0001 : 0);
+	}
+
+	/**
+	 * Give a file or directory the server has just made the mode its client asked for, less what
+	 * the umask took off, as OpenSSH's sftp-server does (it passes the mode to mkdir and open, which
+	 * apply the umask). A chmod would not: OpenSSH's sftp client asks for 0777 for a directory and
+	 * the local file's mode for an upload, so the service's umask would be ignored.
+	 * <p>
+	 * A Java program can't read its umask, so it is found from what the file system just made: a
+	 * directory gets 0777 and a file 0666, less the umask. A file system that gives a new file no
+	 * permission bits at all (it has none) leaves the request as it is.
+	 */
+	private static void setCreatedPermissions(FileSource f, int requested) throws IOException {
+		boolean dir = f.isDirectory();
+		int made = permissionBits(f);
+		int removed = 0;
+		if( made != 0 ) {
+			removed = (dir ? 0777 : 0666) & ~made;
+			if( !dir ) {
+				// a new file isn't executable whatever the umask: an execute bit goes where the read bit did
+				removed |= (removed & 0444) >> 2;
+			}
+		}
+		setPermissions(f, requested & ~removed);
+	}
+
 	private static void setPermissions(FileSource f, int mode) throws IOException {
 		f.setOwnerReadable((mode & 0400) != 0);
 		f.setOwnerWritable((mode & 0200) != 0);
@@ -720,7 +751,7 @@ public class SftpServer extends AbstractCommand {
 			throw new Status(SftpConstants.SSH_FX_FAILURE, "Can't create the directory");
 		}
 		if( a.hasPermissions() ) {
-			setPermissions(d, a.getPermissions());
+			setCreatedPermissions(d, a.getPermissions());
 		}
 		ok(id);
 	}
@@ -1010,10 +1041,7 @@ public class SftpServer extends AbstractCommand {
 			throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
 		}
 		boolean dir = f.isDirectory();
-		int mode = (dir ? S_IFDIR : S_IFREG)
-				| (f.canOwnerRead() ? 0400 : 0) | (f.canOwnerWrite() ? 0200 : 0) | (f.canOwnerExecute() ? 0100 : 0)
-				| (f.canGroupRead() ? 0040 : 0) | (f.canGroupWrite() ? 0020 : 0) | (f.canGroupExecute() ? 0010 : 0)
-				| (f.canOtherRead() ? 0004 : 0) | (f.canOtherWrite() ? 0002 : 0) | (f.canOtherExecute() ? 0001 : 0);
+		int mode = (dir ? S_IFDIR : S_IFREG) | permissionBits(f);
 		long size = dir ? 0 : f.length();
 		long mtimeMs = f.lastModified();
 		long atimeMs = mtimeMs;
