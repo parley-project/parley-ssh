@@ -4,6 +4,11 @@
 
 ### Added
 
+- **Post-quantum key exchange `mlkem768x25519-sha256`** (ML-KEM-768 with X25519, OpenSSH 10's default), in
+  both `Ssh`/`SshClient` and `SshServer`. It is offered first where the JDK has ML-KEM (Java 24 and later,
+  used through reflection so the Java 11 base level is unchanged) and left out on older JDKs. Turn it off with
+  `KexAlgorithms -mlkem768x25519-sha256` or `setKeyExchanges(...)`. `IKeyExchange.isSharedSecretString()` lets a
+  method hash K as a string, as the hybrid methods do.
 - **`shellCommand` setting: a program to run as the shell.** `parley.ssh.shellCommand=/opt/fsh/bin/fsh -i -l` runs
   that program with `ProcessShellFactory`, on a real pseudo terminal when the client asks for one and pty4j is
   on the class path, so the shell has a controlling terminal and job control (an in-process shell such as fsh's

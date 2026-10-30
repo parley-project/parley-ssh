@@ -98,6 +98,10 @@ public class MinaInteropTest {
 	@Test
 	public void everyKeyExchange() throws Exception {
 		for (String kex : SshAlgorithms.defaults().getKeyExchangeNames()) {
+			if( kex.startsWith("mlkem") ) {
+				// MINA has no post-quantum key exchange; OpenSSH covers it (OpenSshClientIT)
+				continue;
+			}
 			try (SshClient c = client(SshAlgorithms.defaults().setKeyExchanges(kex))) {
 				ClientSession s = connect(c);
 				assertEquals(kex, s.getNegotiated().getKeyExchange());

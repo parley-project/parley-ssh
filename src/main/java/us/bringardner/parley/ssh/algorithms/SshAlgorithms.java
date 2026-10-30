@@ -53,6 +53,8 @@ public class SshAlgorithms {
 	private static final Map<String, NamedFactory<ISshMac>> KNOWN_MACS = new LinkedHashMap<String, NamedFactory<ISshMac>>();
 
 	static {
+		// Post-quantum hybrid first; only where the JDK has ML-KEM (Java 24+)
+		registerKeyExchange(MlKemX25519KeyExchange.factory());
 		kex("curve25519-sha256", "SHA-256", X25519Agreement::new);
 		kex("curve25519-sha256@libssh.org", "SHA-256", X25519Agreement::new);
 		kex("ecdh-sha2-nistp256", "SHA-256", () -> new EcdhAgreement("nistp256"));

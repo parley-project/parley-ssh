@@ -535,7 +535,8 @@ public abstract class SshTransport extends BaseObject implements INioHandler {
 	 */
 	private void keysReady() throws IOException {
 		byte[] h = kex.getExchangeHash();
-		byte[] k = new SshBuffer().putMpint(kex.getSharedSecret()).toByteArray();
+		SshBuffer kb = new SshBuffer();
+		byte[] k = (kex.isSharedSecretString() ? kb.putString(kex.getSharedSecret()) : kb.putMpint(kex.getSharedSecret())).toByteArray();
 		String hash = kex.getHashAlgorithm();
 		if( sessionId == null ) {
 			sessionId = h;

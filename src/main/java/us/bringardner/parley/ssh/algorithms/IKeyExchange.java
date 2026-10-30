@@ -70,4 +70,12 @@ public interface IKeyExchange {
 	 * @return K as an unsigned big endian number, once done
 	 */
 	byte[] getSharedSecret();
+
+	/**
+	 * @return true if K is hashed and used to derive keys as a string, as the post-quantum
+	 * hybrid methods do; false (the default) for an mpint
+	 */
+	default boolean isSharedSecretString() {
+		return false;
+	}
 }

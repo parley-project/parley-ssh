@@ -18,7 +18,8 @@ It is tested against OpenSSH, Apache MINA SSHD and JSch.
 
 ## Features
 
-**Algorithms** (strongest first): curve25519, ECDH and Diffie-Hellman group 14/16 key exchange;
+**Algorithms** (strongest first): the post-quantum hybrid mlkem768x25519-sha256 (client and server;
+needs Java 24 or later, otherwise it isn't offered), curve25519, ECDH and Diffie-Hellman group 14/16 key exchange;
 Ed25519, ECDSA and RSA (SHA-2) keys; chacha20-poly1305, AES-GCM and AES-CTR ciphers; HMAC-SHA2
 (encrypt-then-MAC); zlib compression; strict key exchange (the Terrapin fix); re-keying. SHA-1
 algorithms are known but only used when turned on by name.
