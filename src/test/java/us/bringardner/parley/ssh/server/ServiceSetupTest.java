@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import us.bringardner.parley.ssh.SshException;
-import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 import us.bringardner.parley.ssh.client.ClientSession;
 import us.bringardner.parley.ssh.client.HostKeyVerifiers;
