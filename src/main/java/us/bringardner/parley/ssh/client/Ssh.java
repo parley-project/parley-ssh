@@ -25,6 +25,7 @@
  */
 package us.bringardner.parley.ssh.client;
 
+import us.bringardner.parley.core.ParleyLogger;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -177,17 +178,17 @@ public final class Ssh {
 
 	/** The library logs (to stderr): nothing unless -v, as OpenSSH's own messages are shown instead */
 	private static void setLogging(SshOptions o) {
-		if( System.getProperty("logFile") == null ) {
-			System.setProperty("logFile", "System.err");
+		if( System.getProperty(ParleyLogger.PROPERTY_LOG_FILE) == null ) {
+			System.setProperty(ParleyLogger.PROPERTY_LOG_FILE, "System.err");
 		}
-		if( System.getProperty("logLevel") == null ) {
+		if( System.getProperty(ParleyLogger.PROPERTY_LOG_LEVEL) == null ) {
 			String level = "NONE";
 			if( o.verbose >= 2 || o.logLevel.startsWith("DEBUG") ) {
 				level = "DEBUG";
 			} else if( o.verbose == 1 || o.logLevel.equals("VERBOSE") ) {
 				level = "INFO";
 			}
-			System.setProperty("logLevel", level);
+			System.setProperty(ParleyLogger.PROPERTY_LOG_LEVEL, level);
 		}
 	}
 

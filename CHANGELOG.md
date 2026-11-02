@@ -2,6 +2,13 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-02: durations and log settings, To-Do 2.19)
+
+- **Times are durations** (`250ms`, `2m`; a bare number is ms): `loginFailureDelay`, `loginTimeLimit` and
+  `frameTimeout`, read by parley-core and parley-net.
+- **The `pssh` client's logging** sets parley-core's `parley.log.file` and `parley.log.level` (it set 1.x's `logFile`
+  and `logLevel`, which are no longer read).
+
 ### Added
 
 - **The settings this module reads are listed** in `META-INF/parley/settings.list`, so a Parley server's

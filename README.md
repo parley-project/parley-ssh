@@ -228,7 +228,8 @@ Parley server does.
 
 Settings can also be given as properties: system properties, or a properties file named after the
 class on the class path, each named with the server's prefix, `parley.ssh`: the table's `port` is
-`parley.ssh.port`, and so on.
+`parley.ssh.port`, and so on. Times are durations: a whole number with `ms`, `s`, `m`, `h` or `d`
+(`250ms`, `2m`); a number alone is milliseconds.
 
 | Property | What it does | Default |
 |---|---|---|
@@ -244,8 +245,8 @@ class on the class path, each named with the server's prefix, `parley.ssh`: the 
 | `shellCommand` | A program to run as the shell, with its arguments (split at blanks, `"double quotes"` keep blanks together), e.g. `/opt/fsh/bin/fsh -i -l`. It runs on a real pseudo terminal when the client asks for one and pty4j is on the class path, so it has a controlling terminal and job control. Used when `shellFactory` is not set | not set |
 | `revokedKeys` | A key revocation list or list of keys that can't log in | none |
 | `maxLoginAttempts` | Failed logins before the connection is closed | 6 |
-| `loginFailureDelay` | Milliseconds before a failed login is answered | 250 |
-| `loginTimeLimit` | Milliseconds a connection has to log in | 120000 |
+| `loginFailureDelay` | How long before a failed login is answered, a duration | `250ms` |
+| `loginTimeLimit` | How long a connection has to log in, a duration | `2m` |
 
 Properties of other Parley servers that an SSH server ignores: `secure` (SSH encrypts itself and
 never uses TLS), `socketTimeout`, `acceptTimeout`, `soLinger` and `isSoLinger` (they are for
