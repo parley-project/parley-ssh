@@ -2,6 +2,10 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-02: parley-net's IPrincipal split, To-Do 3.2)
+
+- **`SshPrincipal` is an identity only** (parley-net 2.0.0's `IPrincipal` has no `authenticate`).
+
 ### Changed (2026-11-02: durations and log settings, To-Do 2.19)
 
 - **Times are durations** (`250ms`, `2m`; a bare number is ms): `loginFailureDelay`, `loginTimeLimit` and

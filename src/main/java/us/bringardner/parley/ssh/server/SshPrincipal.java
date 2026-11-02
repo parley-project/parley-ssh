@@ -43,9 +43,4 @@ public class SshPrincipal extends AbstractPrincipal {
 			add(p);
 		}
 	}
-
-	@Override
-	public boolean authenticate(byte[] credentials) {
-		return false;
-	}
 }
