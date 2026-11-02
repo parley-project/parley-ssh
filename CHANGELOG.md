@@ -4,6 +4,9 @@
 
 ### Added
 
+- **The settings this module reads are listed** in `META-INF/parley/settings.list`, so a Parley server's
+  start-up check (parley-net's `KnownSettings`, To-Do 2.16) knows them and warns only about a setting
+  nothing reads. A test checks the list has every name the code here reads.
 - **Post-quantum key exchange `mlkem768x25519-sha256`** (ML-KEM-768 with X25519, OpenSSH 10's default), in
   both `Ssh`/`SshClient` and `SshServer`. It is offered first where the JDK has ML-KEM (Java 24 and later,
   used through reflection so the Java 11 base level is unchanged) and left out on older JDKs. Turn it off with

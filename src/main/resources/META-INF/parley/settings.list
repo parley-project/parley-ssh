@@ -1,0 +1,19 @@
+# The settings parley-ssh reads, for the servers' start-up check
+# (format: parley-net's KnownSettings). Add a name here when code here starts reading it.
+
+prefix parley.ssh
+
+# SshServer
+parley.ssh.hostKeyDir
+parley.ssh.revokedKeys
+parley.ssh.shellCommand
+parley.ssh.shellFactory
+
+# SshServer as a service (its main)
+parley.ssh.configFile
+parley.ssh.homes
+parley.ssh.trustedUserCaKeys
+
+# SFTP
+parley.ssh.sftp.sharedStore
+parley.ssh.sftp.serverId
