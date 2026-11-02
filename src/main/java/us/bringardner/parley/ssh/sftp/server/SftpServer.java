@@ -51,7 +51,6 @@ import us.bringardner.parley.files.IRandomAccessStream;
 import us.bringardner.parley.net.lock.LockDomain;
 import us.bringardner.parley.net.lock.Locks;
 import us.bringardner.parley.net.lock.NamedLock;
-import us.bringardner.parley.net.lock.StoreClaim;
 import us.bringardner.parley.net.lock.StoreLocks;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.server.AbstractCommand;
@@ -180,6 +179,10 @@ public class SftpServer extends AbstractCommand {
 	// version-select is only allowed as the first request
 	private boolean requested;
 
+	/**
+	 * One SFTP session on root. It doesn't claim the store: the server that runs it must have
+	 * (as {@link SftpSubsystemFactory} does).
+	 */
 	public SftpServer(FileSource root, boolean readOnly) {
 		this.root = root;
 		this.readOnly = readOnly;
@@ -189,21 +192,14 @@ public class SftpServer extends AbstractCommand {
 	protected int run(CommandEnvironment env, InputStream in, OutputStream out, OutputStream err) throws Exception {
 		this.out = out;
 		DataInputStream din = new DataInputStream(in);
-		// the store's locks, with the servers here and those sharing it; refused if another server
-		// has it alone
+		// the store's locks, with the other sessions here and the servers sharing it. The store
+		// itself is claimed by the server (SftpSubsystemFactory), once, not by each session: a
+		// second session's claim would be refused like another server's
 		LockDomain domain;
-		StoreClaim claim;
 		try {
 			domain = StoreLocks.get().acquire(root, StoreLocks.sharing(SHARED_STORE_PROPERTY));
 		} catch (IOException e) {
 			logError("SFTP: can't set up the locks of "+root.getAbsolutePath(), e);
-			return 1;
-		}
-		try {
-			claim = domain.claimStore(StoreLocks.serverId(SERVER_ID_PROPERTY, "sftp", 0));
-		} catch (IOException e) {
-			StoreLocks.get().release(domain);
-			logError("SFTP: "+e.getMessage(), e);
 			return 1;
 		}
 		try {
@@ -227,7 +223,6 @@ public class SftpServer extends AbstractCommand {
 			try {
 				closeAll();
 			} finally {
-				claim.close();
 				StoreLocks.get().release(domain);
 			}
 		}

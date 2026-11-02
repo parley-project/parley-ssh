@@ -47,6 +47,7 @@ public class SftpLocksTest {
 	File dir;
 
 	private SshServer server;
+	private SftpSubsystemFactory sftpFactory;
 	private FileSource root;
 	private final List<SshClient> clients = new ArrayList<>();
 	private String sharingBefore;
@@ -60,17 +61,38 @@ public class SftpLocksTest {
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
-		server.addSubsystem(SftpSubsystemFactory.forRoot(root));
-		server.startAndWait(5000);
+		sftpFactory = SftpSubsystemFactory.forRoot(root);
+		server = newServer(sftpFactory);
+	}
+
+	private static SshServer newServer(SftpSubsystemFactory factory) throws Exception {
+		SshServer s = new SshServer(0);
+		s.setHostKeyProvider(HostKeyProviders.ephemeral());
+		s.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		s.addSubsystem(factory);
+		s.startAndWait(5000);
+		return s;
 	}
 
 	private SftpClient sftp() throws Exception {
+		return SftpClient.open(session(server));
+	}
+
+	private ClientSession session(SshServer to) throws Exception {
 		SshClient c = new SshClient();
 		clients.add(c);
 		c.setHostKeyVerifier(HostKeyVerifiers.acceptAll());
-		ClientSession s = c.connectAndWait("localhost", server.getLocalPort());
+		ClientSession s = c.connectAndWait("localhost", to.getLocalPort());
 		s.authenticateAndWait("alice", new PasswordAuth("secret"));
-		return SftpClient.open(s);
+		return s;
+	}
+
+	private static List<String> names(SftpClient sftp) throws Exception {
+		List<String> ret = new ArrayList<>();
+		for (SftpDirEntry e : sftp.list("/")) {
+			ret.add(e.getName());
+		}
+		return ret;
 	}
 
 	@AfterEach
@@ -174,6 +196,58 @@ public class SftpLocksTest {
 			SftpHandle h = openForWrite(a, "/f.txt");
 			assertTrue(d.tryLock("file/f.txt", Mode.EXCLUSIVE) == null, "and the other server finds it busy");
 			h.close();
+		}
+	}
+
+	/**
+	 * The server claims the store once and its sessions share the claim: with sharing off, a
+	 * second session (another client, or another channel of the same connection) used to be
+	 * refused like another server, so only one SFTP session could run at a time.
+	 */
+	@Test
+	public void sessionsShareTheServersClaim() throws Exception {
+		start(Sharing.OFF);
+		SftpClient a = sftp();
+		SftpClient b = sftp();
+		ClientSession one = session(server);
+		SftpClient c = SftpClient.open(one);
+		SftpClient d = SftpClient.open(one);   // a second channel on the same connection
+		put(a, "/a.txt", "a");
+		put(b, "/b.txt", "b");
+		put(c, "/c.txt", "c");
+		put(d, "/d.txt", "d");
+		for (SftpClient s : List.of(a, b, c, d)) {
+			List<String> n = names(s);
+			assertTrue(n.containsAll(List.of("a.txt", "b.txt", "c.txt", "d.txt")), n.toString());
+		}
+		assertEquals(1, sftpFactory.getClaimedStores(), "one claim, the server's");
+	}
+
+	/** With sharing off another server is still kept out, until the first one stops. */
+	@Test
+	public void anotherServerGetsTheStoreWhenThisOneStops() throws Exception {
+		start(Sharing.OFF);
+		put(sftp(), "/h.txt", "h");
+		SftpSubsystemFactory otherFactory = SftpSubsystemFactory.forRoot(root);
+		SshServer other = newServer(otherFactory);
+		try {
+			ClientSession refused = session(other);
+			assertThrows(Exception.class, () -> SftpClient.open(refused), "the store is this server's alone");
+			assertEquals(0, otherFactory.getClaimedStores());
+
+			for (SshClient c : clients) {
+				c.close();
+			}
+			clients.clear();
+			server.stop(5000, false);
+			server = null;
+			assertEquals(0, sftpFactory.getClaimedStores(), "let go when the server stopped");
+
+			SftpClient now = SftpClient.open(session(other));
+			assertTrue(names(now).contains("h.txt"));
+			assertEquals(1, otherFactory.getClaimedStores());
+		} finally {
+			other.stop(5000, false);
 		}
 	}
 

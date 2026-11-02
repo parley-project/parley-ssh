@@ -434,6 +434,27 @@ public class SshServer extends NioServer {
 		this.shellFactoryConfigured = factory != null;
 	}
 
+	/**
+	 * Run the server; when it stops (every connection closed), close the subsystems that hold
+	 * something for the server's life, such as SFTP's store claims.
+	 */
+	@Override
+	public void run() {
+		try {
+			super.run();
+		} finally {
+			for (ISubsystemFactory f : subsystems.values()) {
+				if( f instanceof AutoCloseable ) {
+					try {
+						((AutoCloseable) f).close();
+					} catch (Exception e) {
+						logError("Can't close subsystem "+f.getName(), e);
+					}
+				}
+			}
+		}
+	}
+
 	public void addSubsystem(ISubsystemFactory factory) {
 		subsystems.put(factory.getName(), factory);
 	}

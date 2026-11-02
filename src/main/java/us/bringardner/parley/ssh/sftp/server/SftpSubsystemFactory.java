@@ -26,8 +26,13 @@
 package us.bringardner.parley.ssh.sftp.server;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.net.lock.LockDomain;
+import us.bringardner.parley.net.lock.StoreClaim;
+import us.bringardner.parley.net.lock.StoreLocks;
 import us.bringardner.parley.ssh.server.CommandEnvironment;
 import us.bringardner.parley.ssh.server.ICommand;
 import us.bringardner.parley.ssh.server.ISubsystemFactory;
@@ -42,12 +47,20 @@ import us.bringardner.parley.ssh.server.ISubsystemFactory;
  *         new FileProxyFactory().createFileSource("/srv/sftp/"+env.getUser())));
  * </pre>
  *
+ * The server claims each store its sessions use (parley-net's {@link StoreLocks}, shared as
+ * {@value SftpServer#SHARED_STORE_PROPERTY} says), once, the first time a session needs it, and
+ * keeps the claim until {@link #close()} ({@link us.bringardner.parley.ssh.server.SshServer} closes
+ * its subsystems when it stops). Its sessions share the claim: any number of them, from one client
+ * or many, run at once. A store another server has alone refuses the session.
+ *
  * @author Tony Bringardner
  */
-public class SftpSubsystemFactory implements ISubsystemFactory {
+public class SftpSubsystemFactory implements ISubsystemFactory, AutoCloseable {
 
 	private final ISftpRootProvider roots;
 	private volatile boolean readOnly;
+	/** The stores claimed, each with the lock domain kept open for it */
+	private final Map<LockDomain, StoreClaim> claims = new LinkedHashMap<LockDomain, StoreClaim>();
 
 	/**
 	 * @param roots each user's root directory
@@ -77,7 +90,52 @@ public class SftpSubsystemFactory implements ISubsystemFactory {
 		if( !root.isDirectory() ) {
 			throw new IOException("SFTP root is not a directory: "+root);
 		}
+		claim(root);
 		return new SftpServer(root, readOnly);
+	}
+
+	/** Claim root's store for this server if it hasn't been yet. */
+	private void claim(FileSource root) throws IOException {
+		StoreLocks locks = StoreLocks.get();
+		LockDomain domain = locks.acquire(root, StoreLocks.sharing(SftpServer.SHARED_STORE_PROPERTY));
+		boolean keep = false;
+		try {
+			synchronized (claims) {
+				if( !claims.containsKey(domain) ) {
+					claims.put(domain, domain.claimStore(StoreLocks.serverId(SftpServer.SERVER_ID_PROPERTY, "sftp", 0)));
+					keep = true;   // this acquire stays open with the claim, until close()
+				}
+			}
+		} finally {
+			if( !keep ) {
+				locks.release(domain);
+			}
+		}
+	}
+
+	/** @return how many stores this server has claimed (for tests) */
+	public int getClaimedStores() {
+		synchronized (claims) {
+			return claims.size();
+		}
+	}
+
+	/**
+	 * Let go of the stores' claims, after the sessions have ended (SshServer does this when it
+	 * stops). A server started again claims them again with its first sessions.
+	 */
+	@Override
+	public void close() {
+		synchronized (claims) {
+			for (Map.Entry<LockDomain, StoreClaim> e : claims.entrySet()) {
+				try {
+					e.getValue().close();
+				} finally {
+					StoreLocks.get().release(e.getKey());
+				}
+			}
+			claims.clear();
+		}
 	}
 
 	public boolean isReadOnly() {
