@@ -236,6 +236,58 @@ public class ServerTest {
 		assertFalse(s.isOpen(), "the server disconnected");
 	}
 
+	/** A user list that can't answer (a database outage) */
+	private static final class OutageAcl implements us.bringardner.parley.net.server.IAccessControlList {
+		@Override
+		public void initialize(us.bringardner.parley.net.server.IServer server) {
+		}
+
+		@Override
+		public boolean checkPermission(us.bringardner.parley.net.server.IPrincipal user, us.bringardner.parley.net.server.IPermission action) {
+			return false;
+		}
+
+		@Override
+		public us.bringardner.parley.net.server.IPrincipal getPrincipal(String user) {
+			return null;
+		}
+
+		@Override
+		public us.bringardner.parley.net.server.IPrincipal findPrincipal(String user) throws us.bringardner.parley.net.server.AccessControlUnavailableException {
+			throw new us.bringardner.parley.net.server.AccessControlUnavailableException("the database is down");
+		}
+
+		@Override
+		public boolean verifyPassword(us.bringardner.parley.net.server.IPrincipal user, byte[] credentials) throws us.bringardner.parley.net.server.AccessControlUnavailableException {
+			throw new us.bringardner.parley.net.server.AccessControlUnavailableException("the database is down");
+		}
+	}
+
+	/** To-Do 3.5: a list that can't answer gets "try again later" (service not available), not a wrong password */
+	@Test
+	public void aListThatCantAnswerSaysTryAgainLater() throws Exception {
+		start();
+		server.setPasswordAuthenticator(null); // passwords checked by the access control list
+		server.setAccessControl(new OutageAcl());
+		server.setMaxLoginAttempts(1);
+		server.startAndWait(5000);
+
+		ClientSession s = connect(null);
+		SshException e = assertThrows(SshException.class, () -> s.authenticateAndWait("alice", new PasswordAuth("secret")));
+		assertEquals(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, e.getReason(), e.getMessage());
+		client.close();
+
+		// the key is right, but the user's settings can't be read: the login waits too
+		ClientSession k = connect(null);
+		SshException ke = assertThrows(SshException.class, () -> k.authenticateAndWait("alice", new PublicKeyAuth(alicesKey)));
+		assertEquals(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, ke.getReason(), ke.getMessage());
+		client.close();
+
+		ClientSession ki = connect(null);
+		SshException kie = assertThrows(SshException.class, () -> ki.authenticateAndWait("alice", KeyboardInteractiveAuth.password("secret".toCharArray())));
+		assertEquals(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, kie.getReason(), kie.getMessage());
+	}
+
 	@Test
 	public void loginTimeLimit() throws Exception {
 		start();

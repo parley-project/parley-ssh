@@ -244,10 +244,17 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 		return n.matches(re.toString());
 	}
 
-	static IPrincipal principal(String user, IServerAuthContext context) {
+	/**
+	 * The user's principal from the access control list (its permissions and root), else a bare one.
+	 *
+	 * @throws us.bringardner.parley.net.server.AccessControlUnavailableException if the list can't
+	 * answer now: the key is right, but the login must wait rather than go ahead without the list's
+	 * settings for the user
+	 */
+	static IPrincipal principal(String user, IServerAuthContext context) throws IOException {
 		IAccessControlList acl = context.getServer().getAccessControl();
 		if( acl != null ) {
-			IPrincipal p = acl.getPrincipal(user);
+			IPrincipal p = acl.findPrincipal(user);
 			if( p != null ) {
 				return new ImmutablePrincipal(p);
 			}

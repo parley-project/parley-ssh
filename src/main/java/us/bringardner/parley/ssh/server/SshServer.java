@@ -284,13 +284,15 @@ public class SshServer extends NioServer {
 	}
 
 	/**
-	 * @return passwords checked by the access control list (as the framework's servers do)
+	 * @return passwords checked by the access control list (as the framework's servers do); a
+	 * list that can't answer now throws AccessControlUnavailableException, so the session says
+	 * "try again later" instead of counting a wrong password
 	 */
 	public IPasswordAuthenticator aclPasswordAuthenticator() {
 		return (user, password, context) -> {
 			byte[] b = new String(password).getBytes(StandardCharsets.UTF_8);
 			try {
-				return authenticate(user, b);
+				return checkLogin(user, b);
 			} finally {
 				java.util.Arrays.fill(b, (byte) 0);
 			}

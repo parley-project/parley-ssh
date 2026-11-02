@@ -2,6 +2,14 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-02: logins when the user list can't answer, To-Do 3.5)
+
+- **A login the access control list can't check is disconnected with "service not available"** ("Can't check logins
+  now, try again later"), not counted as a failed login: passwords and keyboard-interactive are checked with
+  parley-net's `checkLogin` (`aclPasswordAuthenticator`), and a public key or certificate login reads the user from
+  the list with `findPrincipal`, so an outage no longer logs a user in by key without the list's settings (its
+  permissions and root).
+
 ### Changed (2026-11-02: parley-net's IPrincipal split, To-Do 3.2)
 
 - **`SshPrincipal` is an identity only** (parley-net 2.0.0's `IPrincipal` has no `authenticate`).

@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import us.bringardner.parley.net.nio.INioConnection;
+import us.bringardner.parley.net.server.AccessControlUnavailableException;
 import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.net.server.Permission;
 import us.bringardner.parley.ssh.SshBuffer;
@@ -333,7 +334,14 @@ public class ServerSession extends SshTransport {
 				throw new SshException("Unexpected "+SshConstants.messageName(msg));
 			}
 			pending = null;
-			apply(m, pendingUser, m.handle(authContext, msg, message));
+			IServerAuthMethod.Result r;
+			try {
+				r = m.handle(authContext, msg, message);
+			} catch (AccessControlUnavailableException e) {
+				unavailable(pendingUser, e);
+				return true;
+			}
+			apply(m, pendingUser, r);
 			return true;
 		}
 		if( msg >= SshConstants.SSH_MSG_GLOBAL_REQUEST && msg <= SshConstants.SSH_MSG_CHANNEL_FAILURE ) {
@@ -368,7 +376,14 @@ public class ServerSession extends SshTransport {
 			failed(name);
 			return;
 		}
-		apply(am, name, am.request(authContext, name, m));
+		IServerAuthMethod.Result r;
+		try {
+			r = am.request(authContext, name, m);
+		} catch (AccessControlUnavailableException e) {
+			unavailable(name, e);
+			return;
+		}
+		apply(am, name, r);
 	}
 
 	private void apply(IServerAuthMethod m, String name, IServerAuthMethod.Result r) throws IOException {
@@ -387,6 +402,16 @@ public class ServerSession extends SshTransport {
 		} else {
 			failed(name);
 		}
+	}
+
+	/**
+	 * The access control list can't answer now (a database outage, say): not a wrong password, so
+	 * not counted; the client is told to try again later and disconnected (RFC 4253: service not
+	 * available).
+	 */
+	private void unavailable(String name, AccessControlUnavailableException e) throws IOException {
+		logError("Can't check the login of "+name+" from "+getConnection().getRemoteAddress()+": "+e.getMessage());
+		disconnect(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, "Can't check logins now, try again later");
 	}
 
 	private void failed(String name) throws IOException {
