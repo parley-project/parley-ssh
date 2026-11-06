@@ -31,7 +31,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import us.bringardner.parley.net.server.PropertyAuthenticator;
+import us.bringardner.parley.net.server.PropertiesUserRegistry;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
@@ -137,7 +137,7 @@ public class ServerTest {
 		SshServer s = new SshServer(0);
 		s.setName("ssh-test");
 		s.setHostKeyProvider(HostKeyProviders.ephemeral());
-		s.setPasswordAuthenticator((user, pw, ctx) -> "alice".equals(user) && "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		s.setUserRegistry(new TestUsers("secret", "alice"));
 		File keys = new File(dir, "authorized_keys");
 		Files.write(keys.toPath(), (SshPublicKeys.toOpenSsh(alicesKey.getPublic())+" alice@test\n"
 				+"no-such-option,command=\"/bin/false\" "+SshPublicKeys.toOpenSsh(strangersKey.getPublic())+"\n").getBytes(StandardCharsets.UTF_8));
@@ -238,30 +238,16 @@ public class ServerTest {
 		assertFalse(s.isOpen(), "the server disconnected");
 	}
 
-	/** A user list that can't answer (a database outage) */
-	private static final class OutageAcl implements us.bringardner.parley.net.server.IAccessControlList {
+	/** A user registry that can't answer (a database outage) */
+	private static final class OutageRegistry extends TestUsers {
 		@Override
-		public void initialize(us.bringardner.parley.net.server.IServer server) {
+		public us.bringardner.parley.iam.AuthenticationResult authenticate(us.bringardner.parley.iam.Credential credential) {
+			return us.bringardner.parley.iam.AuthenticationResult.unavailable("the database is down");
 		}
 
 		@Override
-		public boolean checkPermission(us.bringardner.parley.net.server.IPrincipal user, us.bringardner.parley.net.server.IPermission action) {
-			return false;
-		}
-
-		@Override
-		public us.bringardner.parley.net.server.IPrincipal getPrincipal(String user) {
-			return null;
-		}
-
-		@Override
-		public us.bringardner.parley.net.server.IPrincipal findPrincipal(String user) throws us.bringardner.parley.net.server.AccessControlUnavailableException {
-			throw new us.bringardner.parley.net.server.AccessControlUnavailableException("the database is down");
-		}
-
-		@Override
-		public boolean verifyPassword(us.bringardner.parley.net.server.IPrincipal user, byte[] credentials) throws us.bringardner.parley.net.server.AccessControlUnavailableException {
-			throw new us.bringardner.parley.net.server.AccessControlUnavailableException("the database is down");
+		public us.bringardner.parley.iam.ParleyPrincipal findPrincipal(String name) throws us.bringardner.parley.iam.UserRegistryUnavailableException {
+			throw new us.bringardner.parley.iam.UserRegistryUnavailableException("the database is down");
 		}
 	}
 
@@ -269,8 +255,7 @@ public class ServerTest {
 	@Test
 	public void aListThatCantAnswerSaysTryAgainLater() throws Exception {
 		start();
-		server.setPasswordAuthenticator(null); // passwords checked by the access control list
-		server.setAccessControl(new OutageAcl());
+		server.setUserRegistry(new OutageRegistry());
 		server.setMaxLoginAttempts(1);
 		server.startAndWait(5000);
 
@@ -373,7 +358,7 @@ public class ServerTest {
 		assertEquals("ok\n", s.exec("echo ok", null, 10000).getStdoutText());
 	}
 
-	/** With an access control list, users need the permission for what they run */
+	/** Users need the permission for what they run: the user registry decides */
 	@Test
 	public void permissionsFromTheAccessControlList() throws Exception {
 		String name = "ssh-acl-test";
@@ -381,10 +366,9 @@ public class ServerTest {
 		try {
 			start();
 			server.setName(name);
-			server.setPasswordAuthenticator(null);
-			PropertyAuthenticator acl = new PropertyAuthenticator();
+			PropertiesUserRegistry acl = new PropertiesUserRegistry();
 			acl.initialize(name);
-			server.setAccessControl(acl);
+			server.setUserRegistry(acl);
 			server.startAndWait(5000);
 			ClientSession s = connect(null);
 			s.authenticateAndWait("carol", new PasswordAuth("pw"));

@@ -47,9 +47,6 @@ import java.util.regex.Pattern;
 import us.bringardner.parley.core.BaseObject;
 import us.bringardner.parley.core.util.AddressMatcher;
 import us.bringardner.parley.files.FileSource;
-import us.bringardner.parley.net.server.IAccessControlList;
-import us.bringardner.parley.net.server.IPrincipal;
-import us.bringardner.parley.net.server.ImmutablePrincipal;
 import us.bringardner.parley.ssh.SshException;
 import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
@@ -70,8 +67,8 @@ import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
  * not listed here is skipped, with a warning: ignoring it would let the key do more than its
  * owner meant.
  * <p>
- * The user is the access control list's principal of that name when the server has one
- * (so its permissions apply), else an {@link SshPrincipal}.
+ * This only says the key may log in as the user: the user (its permissions and attributes)
+ * comes from the server's user registry, which must know them.
  *
  * @author Tony Bringardner
  */
@@ -159,22 +156,22 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 	}
 
 	@Override
-	public IPrincipal authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException {
+	public boolean authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException {
 		byte[] blob = SshPublicKeys.encode(key);
 		for (Entry e : entries(user)) {
 			if( !e.certAuthority && Arrays.equals(e.blob, blob) && usable(e, context, user) ) {
 				context.getAttributes().put(KeyRestrictions.ATTRIBUTE, e.restrictions);
-				return principal(user, context);
+				return true;
 			}
 		}
-		return null;
+		return false;
 	}
 
 	/**
 	 * A user certificate signed by a cert-authority line's key.
 	 */
 	@Override
-	public IPrincipal authenticate(String user, SshCertificate cert, IServerAuthContext context) throws IOException {
+	public boolean authenticate(String user, SshCertificate cert, IServerAuthContext context) throws IOException {
 		byte[] ca = cert.getCaKeyBlob();
 		for (Entry e : entries(user)) {
 			if( e.certAuthority && Arrays.equals(e.blob, ca) && usable(e, context, user) ) {
@@ -185,10 +182,10 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 					continue;
 				}
 				context.getAttributes().put(KeyRestrictions.ATTRIBUTE, e.restrictions);
-				return principal(user, context);
+				return true;
 			}
 		}
-		return null;
+		return false;
 	}
 
 	/**
@@ -254,24 +251,6 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 			re.append(c == '*' ? ".*" : c == '?' ? "." : Pattern.quote(String.valueOf(c)));
 		}
 		return n.matches(re.toString());
-	}
-
-	/**
-	 * The user's principal from the access control list (its permissions and root), else a bare one.
-	 *
-	 * @throws us.bringardner.parley.net.server.AccessControlUnavailableException if the list can't
-	 * answer now: the key is right, but the login must wait rather than go ahead without the list's
-	 * settings for the user
-	 */
-	static IPrincipal principal(String user, IServerAuthContext context) throws IOException {
-		IAccessControlList acl = context.getServer().getAccessControl();
-		if( acl != null ) {
-			IPrincipal p = acl.findPrincipal(user);
-			if( p != null ) {
-				return new ImmutablePrincipal(p);
-			}
-		}
-		return new SshPrincipal(user);
 	}
 
 	private List<Entry> entries(FileSource f) throws IOException {

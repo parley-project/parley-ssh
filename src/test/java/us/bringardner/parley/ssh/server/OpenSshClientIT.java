@@ -56,6 +56,7 @@ public class OpenSshClientIT {
 		Process kg = new ProcessBuilder("ssh-keygen", "-q", "-t", "ecdsa", "-N", "", "-f", key.getPath()).redirectErrorStream(true).start();
 		Assumptions.assumeTrue(kg.waitFor(30, TimeUnit.SECONDS) && kg.exitValue() == 0, "no ssh-keygen");
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		edKey = new File(dir, "id_ed25519");
 		Process kg2 = new ProcessBuilder("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", edKey.getPath()).redirectErrorStream(true).start();

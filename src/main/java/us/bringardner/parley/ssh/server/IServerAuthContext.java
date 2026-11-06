@@ -29,6 +29,9 @@ import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Map;
 
+import us.bringardner.parley.iam.AuthenticationResult;
+import us.bringardner.parley.iam.Credential;
+import us.bringardner.parley.iam.Requester;
 import us.bringardner.parley.ssh.SshBuffer;
 
 /**
@@ -58,4 +61,27 @@ public interface IServerAuthContext {
 	 * @return state a method keeps between messages of this session (e.g. keyboard-interactive's user)
 	 */
 	Map<String, Object> getAttributes();
+
+	/**
+	 * @return who is asking: the session's requester, for the credentials a method makes
+	 * @since 2.0.0
+	 */
+	Requester getRequester();
+
+	/**
+	 * Log the session in with this credential: the session's authenticate, the one door
+	 * (the server's user registry checks it; a refusal is counted and its reply delayed).
+	 *
+	 * @return the registry's answer; AUTHENTICATED logs the session in
+	 * @since 2.0.0
+	 */
+	AuthenticationResult authenticate(Credential credential);
+
+	/**
+	 * Would this credential do? The server's probe: nothing is logged in, counted or recorded
+	 * (publickey's query without a signature).
+	 *
+	 * @since 2.0.0
+	 */
+	AuthenticationResult probe(Credential credential);
 }

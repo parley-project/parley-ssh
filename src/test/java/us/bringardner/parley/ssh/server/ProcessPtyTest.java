@@ -44,7 +44,7 @@ public class ProcessPtyTest {
 		assumeTrue(ProcessCommandFactory.isPtySupported(), "pty4j");
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers());
 		server.setCommandFactory(new ProcessCommandFactory(dir));
 		server.setShellFactory(new ProcessShellFactory(dir));
 		server.setLoginFailureDelay(0);

@@ -2,6 +2,41 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-06: users, logins and permissions come from parley-iam)
+
+- **parley-ssh uses parley-iam and the new parley-net**: the server's user registry (`authenticationProvider` or
+  `setUserRegistry`, a parley-iam `UserRegistry`) says who the users are, checks passwords and answers permission
+  checks. Every login goes through the session's `authenticate` (parley-net's one door); a server with no registry
+  logs nobody in (the login is disconnected with "service not available" and the error names the setting).
+- **Passwords**: `password` and `keyboard-interactive` send a `PasswordCredential` to the session's `authenticate`,
+  and are offered when the registry checks passwords. Removed: `IPasswordAuthenticator`,
+  `SshServer.setPasswordAuthenticator`, `getPasswordAuthenticator` and `aclPasswordAuthenticator` (a custom password
+  check is a `UserRegistry`). `PasswordAuthMethod()` and `KeyboardInteractiveAuthMethod()` / `(String prompt)` take no
+  authenticator.
+- **Public keys and certificates**: `IPublicKeyAuthenticator.authenticate` returns a `boolean` (may this key or
+  certificate log in as the user) instead of a principal; `AuthorizedKeysAuthenticator` and
+  `UserCertificateAuthenticator` no longer look the user up. `publickey` is a parley-iam `ProofCredential` of
+  `StoredCredentialType.SSH_PUBLIC_KEYS` whose verifier is the key check and the signature: a query without a
+  signature is the server's `probe`, a signed request the session's `authenticate`. `SshServer` overrides
+  `authenticate` and `probe` for these proofs: the key comes from the public key authenticator (the registry keeps
+  no SSH keys), and the user must be one the registry knows (`findPrincipal`).
+- **`SshPrincipal` is removed** (parley-iam: no stand-in users): a user who logs in by key is the registry's
+  principal. `ServerSession.getPrincipal()` and `CommandEnvironment.getPrincipal()` return a `ParleyPrincipal`;
+  SFTP's `userRoot` is the principal's attribute.
+- **`IServerAuthMethod.Result`**: `success(ParleyPrincipal)`, the new `of(AuthenticationResult)` and
+  `unavailable(reason)` (a registry that can't answer, which replaces throwing `AccessControlUnavailableException`);
+  a success the session didn't log in is refused. `IServerAuthContext` adds `getRequester()`, `authenticate` (the
+  session's) and `probe` (the server's).
+- **Failed logins are counted by parley-net** (the session's login limits: the delay before the failure reply, and
+  the disconnect, "too many authentication failures", after `maxLoginAttempts`). Only refused credentials count: a
+  refused key query, an unknown method or a password change request no longer use up attempts.
+- **Permissions** (`exec`, `shell`, a subsystem's name, `forward`) are always asked of the registry (before, a server
+  without an access control list allowed everything). A registry that can't answer gets "service not available" and
+  the client is disconnected, never "not permitted".
+- **The service (`SshServer.main`, `ServiceSetup`) needs a user registry**: without
+  `parley.ssh.authenticationProvider` it doesn't start (it used to run with keys and certificates only, for any user
+  name).
+
 ### Changed (2026-11-06: files are FileSources)
 
 - **Key, certificate, known_hosts, authorized_keys, KRL and config files are parley-files `FileSource`s**, not

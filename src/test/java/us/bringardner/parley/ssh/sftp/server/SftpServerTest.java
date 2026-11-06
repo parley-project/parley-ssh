@@ -39,7 +39,7 @@ import us.bringardner.parley.ssh.client.HostKeyVerifiers;
 import us.bringardner.parley.ssh.client.PasswordAuth;
 import us.bringardner.parley.ssh.client.SshClient;
 import us.bringardner.parley.ssh.server.HostKeyProviders;
-import us.bringardner.parley.ssh.server.SshPrincipal;
+import us.bringardner.parley.ssh.server.TestUsers;
 import us.bringardner.parley.ssh.server.SshServer;
 import us.bringardner.parley.ssh.sftp.SftpAttrs;
 import us.bringardner.parley.ssh.sftp.SftpClient;
@@ -65,7 +65,7 @@ public class SftpServerTest {
 	private void start(FileSource root) throws Exception {
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers());
 		sftpFactory = SftpSubsystemFactory.forRoot(root);
 		server.addSubsystem(sftpFactory);
 		server.startAndWait(5000);

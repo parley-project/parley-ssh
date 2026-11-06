@@ -106,6 +106,7 @@ public class AgentForwardingTest {
 		Files.write(keys.toPath(), ((authorizedOptions.isEmpty() ? "" : authorizedOptions+" ")
 				+new String(Files.readAllBytes(new File(key.getPath()+".pub").toPath()), StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		ProcessCommandFactory os = new ProcessCommandFactory(dir);

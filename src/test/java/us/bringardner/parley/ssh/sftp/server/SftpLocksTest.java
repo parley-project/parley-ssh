@@ -31,7 +31,7 @@ import us.bringardner.parley.ssh.client.HostKeyVerifiers;
 import us.bringardner.parley.ssh.client.PasswordAuth;
 import us.bringardner.parley.ssh.client.SshClient;
 import us.bringardner.parley.ssh.server.HostKeyProviders;
-import us.bringardner.parley.ssh.server.SshPrincipal;
+import us.bringardner.parley.ssh.server.TestUsers;
 import us.bringardner.parley.ssh.server.SshServer;
 import us.bringardner.parley.ssh.sftp.SftpAttrs;
 import us.bringardner.parley.ssh.sftp.SftpClient;
@@ -60,7 +60,7 @@ public class SftpLocksTest {
 		root = new FileProxyFactory().createFileSource(r.getCanonicalPath());
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers());
 		sftpFactory = SftpSubsystemFactory.forRoot(root);
 		server = newServer(sftpFactory);
 	}
@@ -68,7 +68,7 @@ public class SftpLocksTest {
 	private static SshServer newServer(SftpSubsystemFactory factory) throws Exception {
 		SshServer s = new SshServer(0);
 		s.setHostKeyProvider(HostKeyProviders.ephemeral());
-		s.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		s.setUserRegistry(new TestUsers());
 		s.addSubsystem(factory);
 		s.startAndWait(5000);
 		return s;

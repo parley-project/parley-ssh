@@ -88,7 +88,7 @@ public class ForwardingTest {
 		echo = echoServer(pool);
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers());
 		server.setForwardingFilter(ForwardingFilters.localOnly());
 		server.startAndWait(5000);
 	}

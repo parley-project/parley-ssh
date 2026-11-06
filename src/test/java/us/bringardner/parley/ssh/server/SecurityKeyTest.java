@@ -154,6 +154,7 @@ public class SecurityKeyTest {
 
 	private void startServer(IPublicKeyAuthenticator auth) throws Exception {
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPublicKeyAuthenticator(auth);
 		server.setCommandFactory((line, env) -> ServerTest.command(line));

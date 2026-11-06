@@ -50,7 +50,7 @@ import us.bringardner.parley.ssh.server.CommandEnvironment;
 import us.bringardner.parley.ssh.server.ForwardingFilters;
 import us.bringardner.parley.ssh.server.HostKeyProviders;
 import us.bringardner.parley.ssh.server.ICommand;
-import us.bringardner.parley.ssh.server.SshPrincipal;
+import us.bringardner.parley.ssh.server.TestUsers;
 import us.bringardner.parley.ssh.server.SshServer;
 
 /**
@@ -412,7 +412,7 @@ public class SshTest {
 		SshServer s = new SshServer(0);
 		s.setName("ssh-main-test");
 		s.setHostKeyProvider(HostKeyProviders.ephemeral());
-		s.setPasswordAuthenticator((user, pw, ctx) -> "alice".equals(user) && "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		s.setUserRegistry(new TestUsers("secret", "alice"));
 		File keys = new File(dir, "authorized_keys");
 		write(keys, SshPublicKeys.toOpenSsh(alicesKey.getPublic())+" alice@test\n");
 		s.setPublicKeyAuthenticator(new AuthorizedKeysAuthenticator(user -> "alice".equals(user) ? fs(keys) : null));

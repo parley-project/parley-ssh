@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
 
 import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.files.fileproxy.FileProxyFactory;
-import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.iam.ParleyPrincipal;
 import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.sftp.server.SftpSubsystemFactory;
 
@@ -41,7 +41,7 @@ import us.bringardner.parley.ssh.sftp.server.SftpSubsystemFactory;
  */
 final class SftpSetup {
 
-	/** The access control list's parameter for a user's root folder: the same one FTP uses */
+	/** The principal's attribute for a user's root folder: the same one FTP uses */
 	static final String PARAMETER_USER_ROOT = "userRoot";
 	/** User names that can't climb out of the homes folder */
 	private static final Pattern SAFE_USER = Pattern.compile("[A-Za-z0-9._][A-Za-z0-9._-]*");
@@ -50,7 +50,7 @@ final class SftpSetup {
 	}
 
 	/**
-	 * Each user's root: the principal's userRoot parameter, else homes/USER; a user with neither
+	 * Each user's root: the principal's userRoot attribute, else homes/USER; a user with neither
 	 * folder gets no SFTP
 	 */
 	static void add(SshServer server, FileSource homes) {
@@ -65,8 +65,8 @@ final class SftpSetup {
 	}
 
 	/** null for a user name that could leave the homes folder */
-	static FileSource rootOf(IPrincipal principal, String user, FileSource homes) throws IOException {
-		Object root = principal == null ? null : principal.getParameter(PARAMETER_USER_ROOT);
+	static FileSource rootOf(ParleyPrincipal principal, String user, FileSource homes) throws IOException {
+		Object root = principal == null ? null : principal.getAttribute(PARAMETER_USER_ROOT);
 		if( root != null && !root.toString().trim().isEmpty() ) {
 			return SshFiles.local(root.toString().trim());
 		}

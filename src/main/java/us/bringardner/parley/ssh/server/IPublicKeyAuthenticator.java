@@ -28,12 +28,12 @@ package us.bringardner.parley.ssh.server;
 import java.io.IOException;
 import java.security.PublicKey;
 
-import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 
 /**
  * Decides whether a public key may log in as a user (for "publickey"). The signature is
- * checked by the method; this only says whose key it is.
+ * checked by the method; this only says whose key it is. Who the user is (the principal, its
+ * attributes and permissions) comes from the server's user registry, which must know the user.
  *
  * @author Tony Bringardner
  * @see AuthorizedKeysAuthenticator
@@ -43,19 +43,19 @@ import us.bringardner.parley.ssh.algorithms.SshCertificate;
 public interface IPublicKeyAuthenticator {
 
 	/**
-	 * @return the user, if the key may log in as them; null if not
+	 * @return true if the key may log in as the user
 	 */
-	IPrincipal authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException;
+	boolean authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException;
 
 	/**
 	 * A key offered with an OpenSSH certificate. The certificate's restrictions
 	 * (force-command, permit-pty...) are applied to the session by the server.
 	 *
-	 * @return the user, if the certificate may log in as them; null (the default: no
+	 * @return true if the certificate may log in as the user; false (the default: no
 	 * certificate authorities) if not
 	 */
-	default IPrincipal authenticate(String user, SshCertificate certificate, IServerAuthContext context) throws IOException {
-		return null;
+	default boolean authenticate(String user, SshCertificate certificate, IServerAuthContext context) throws IOException {
+		return false;
 	}
 
 	/**
@@ -66,15 +66,13 @@ public interface IPublicKeyAuthenticator {
 		IPublicKeyAuthenticator first = this;
 		return new IPublicKeyAuthenticator() {
 			@Override
-			public IPrincipal authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException {
-				IPrincipal p = first.authenticate(user, key, context);
-				return p != null ? p : other.authenticate(user, key, context);
+			public boolean authenticate(String user, PublicKey key, IServerAuthContext context) throws IOException {
+				return first.authenticate(user, key, context) || other.authenticate(user, key, context);
 			}
 
 			@Override
-			public IPrincipal authenticate(String user, SshCertificate certificate, IServerAuthContext context) throws IOException {
-				IPrincipal p = first.authenticate(user, certificate, context);
-				return p != null ? p : other.authenticate(user, certificate, context);
+			public boolean authenticate(String user, SshCertificate certificate, IServerAuthContext context) throws IOException {
+				return first.authenticate(user, certificate, context) || other.authenticate(user, certificate, context);
 			}
 		};
 	}

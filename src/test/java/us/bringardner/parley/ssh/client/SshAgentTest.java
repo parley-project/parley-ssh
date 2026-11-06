@@ -107,6 +107,7 @@ public class SshAgentTest {
 
 	private ClientSession connect(IPublicKeyAuthenticator auth) throws Exception {
 		server = new SshServer(0);
+		server.setUserRegistry(us.bringardner.parley.ssh.server.TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPublicKeyAuthenticator(auth);
 		server.setCommandFactory((line, env) -> us.bringardner.parley.ssh.server.ServerTestAccess.command(line));

@@ -164,6 +164,7 @@ public class KeyRevocationListTest {
 		write("authorized_keys", SshPublicKeys.toOpenSsh(ok.getPublic())+"\n"+SshPublicKeys.toOpenSsh(bad.getPublic())+"\n");
 		write("revoked", SshPublicKeys.toOpenSsh(bad.getPublic())+"\n");
 		SshServer server = new SshServer(0);
+		server.setUserRegistry(us.bringardner.parley.ssh.server.TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.of(hostKey));
 		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(f("authorized_keys")))
 				.or(new UserCertificateAuthenticator(Collections.singletonList(ca.getPublic()))));

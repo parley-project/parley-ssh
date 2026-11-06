@@ -115,6 +115,7 @@ public class AuthorizedKeysOptionsTest {
 		keys = new File(dir, "authorized_keys");
 		Files.write(keys.toPath(), (String.join("\n", lines)+"\n").getBytes(StandardCharsets.UTF_8));
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
