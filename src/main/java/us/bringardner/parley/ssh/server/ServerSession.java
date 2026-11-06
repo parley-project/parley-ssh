@@ -34,12 +34,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
+import us.bringardner.parley.iam.AuthenticationResult;
+import us.bringardner.parley.iam.AuthorizationResult;
+import us.bringardner.parley.iam.BasicParleyPermission;
+import us.bringardner.parley.iam.Credential;
+import us.bringardner.parley.iam.ParleyPrincipal;
+import us.bringardner.parley.iam.Requester;
 import us.bringardner.parley.net.nio.INioConnection;
-import us.bringardner.parley.net.server.AccessControlUnavailableException;
-import us.bringardner.parley.net.server.IPrincipal;
-import us.bringardner.parley.net.server.Permission;
+import us.bringardner.parley.net.nio.NioConnection;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
@@ -51,9 +54,10 @@ import us.bringardner.parley.ssh.transport.SshTransport;
 
 /**
  * The server end of one SSH connection: the server side of the key exchange (with the
- * server's host keys), the ssh-userauth service (with the server's methods, a limit on
- * failures, a delay after each, and a time limit for logging in), then the connection
- * protocol with "session" channels.
+ * server's host keys), the ssh-userauth service (with the server's methods and a time limit
+ * for logging in; the connection's authenticate counts refused logins and delays the reply to
+ * each, and after too many the client is disconnected), then the connection protocol with
+ * "session" channels.
  *
  * @author Tony Bringardner
  */
@@ -66,12 +70,10 @@ public class ServerSession extends SshTransport {
 	private final Map<String, Object> attributes = new ConcurrentHashMap<String, Object>();
 	private volatile boolean authenticated;
 	private volatile String user;
-	private volatile IPrincipal principal;
 
 	// user authentication, on the handler thread
 	private boolean userAuthAccepted;
 	private boolean bannerSent;
-	private int failures;
 	private IServerAuthMethod pending;
 	private String pendingUser;
 
@@ -105,6 +107,21 @@ public class ServerSession extends SshTransport {
 		public Map<String, Object> getAttributes() {
 			return attributes;
 		}
+
+		@Override
+		public Requester getRequester() {
+			return getConnection().getRequester();
+		}
+
+		@Override
+		public AuthenticationResult authenticate(Credential credential) {
+			return getConnection().authenticate(credential);
+		}
+
+		@Override
+		public AuthenticationResult probe(Credential credential) {
+			return server.probe(credential);
+		}
 	};
 
 	public ServerSession(SshServer server) {
@@ -135,8 +152,12 @@ public class ServerSession extends SshTransport {
 		return user;
 	}
 
-	public IPrincipal getPrincipal() {
-		return principal;
+	/**
+	 * @return who logged in (the user registry's principal), null before
+	 */
+	public ParleyPrincipal getPrincipal() {
+		INioConnection c = getConnection();
+		return authenticated && c != null ? c.getPrincipal() : null;
 	}
 
 	/**
@@ -185,13 +206,29 @@ public class ServerSession extends SshTransport {
 	}
 
 	/**
-	 * @return true if the user may: always without an access control list, else only with the permission
+	 * Does the logged in user hold this permission on the server as a whole? The user registry
+	 * decides. When it can't answer now (a database outage, say) the client is told to try again
+	 * later and disconnected (service not available), never "not permitted".
+	 *
+	 * @param permission e.g. "shell", "exec", "sftp", "forward"
+	 * @return true if the user may
 	 */
 	public boolean isPermitted(String permission) {
-		if( server.getAccessControl() == null ) {
-			return true;
+		INioConnection c = getConnection();
+		if( !authenticated || c == null ) {
+			return false;
 		}
-		return principal != null && server.isAuthorized(principal, new Permission(permission));
+		AuthorizationResult r = c.checkPermission(new BasicParleyPermission(permission, null), null);
+		switch (r.getStatus()) {
+			case ALLOWED:
+				return true;
+			case UNAVAILABLE:
+				logError("Can't check the permission "+permission+" of "+user+": "+r.getReason());
+				disconnect(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, "Can't check permissions now, try again later");
+				return false;
+			default:
+				return false;
+		}
 	}
 
 	// ------------------------------------------------------------------ transport hooks
@@ -334,14 +371,7 @@ public class ServerSession extends SshTransport {
 				throw new SshException("Unexpected "+SshConstants.messageName(msg));
 			}
 			pending = null;
-			IServerAuthMethod.Result r;
-			try {
-				r = m.handle(authContext, msg, message);
-			} catch (AccessControlUnavailableException e) {
-				unavailable(pendingUser, e);
-				return true;
-			}
-			apply(m, pendingUser, r);
+			apply(m, pendingUser, m.handle(authContext, msg, message));
 			return true;
 		}
 		if( msg >= SshConstants.SSH_MSG_GLOBAL_REQUEST && msg <= SshConstants.SSH_MSG_CHANNEL_FAILURE ) {
@@ -367,6 +397,14 @@ public class ServerSession extends SshTransport {
 			bannerSent = true;
 			send(SshBuffer.message(SshConstants.SSH_MSG_USERAUTH_BANNER).putString(banner).putString(""));
 		}
+		try {
+			server.requireUserRegistry();
+		} catch (IllegalStateException e) {
+			// nobody can log in (parley-iam: a missing registry is an error, not "no such user")
+			logError(e.getMessage());
+			disconnect(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, "No logins on this server");
+			return;
+		}
 		if( "none".equals(method) ) {
 			sendFailure();
 			return;
@@ -376,25 +414,22 @@ public class ServerSession extends SshTransport {
 			failed(name);
 			return;
 		}
-		IServerAuthMethod.Result r;
-		try {
-			r = am.request(authContext, name, m);
-		} catch (AccessControlUnavailableException e) {
-			unavailable(name, e);
-			return;
-		}
-		apply(am, name, r);
+		apply(am, name, am.request(authContext, name, m));
 	}
 
 	private void apply(IServerAuthMethod m, String name, IServerAuthMethod.Result r) throws IOException {
 		if( r.isPending() ) {
 			pending = m;
 			pendingUser = name;
+		} else if( r.isUnavailable() ) {
+			unavailable(name, r.getReason());
+		} else if( r.isSuccess() && getConnection().getPrincipal() == null ) {
+			// one door for logging in: only the session's authenticate logs it in
+			logError("Method "+m.getName()+" said "+name+" logged in, but didn't log the session in; refused");
+			failed(name);
 		} else if( r.isSuccess() ) {
 			user = name;
-			principal = r.getPrincipal();
 			authenticated = true;
-			getConnection().setPrincipal(principal);
 			getConnection().clearDeadline();
 			logInfo("User "+name+" logged in with "+m.getName()+" from "+getConnection().getRemoteAddress());
 			send(SshBuffer.message(SshConstants.SSH_MSG_USERAUTH_SUCCESS));
@@ -405,36 +440,38 @@ public class ServerSession extends SshTransport {
 	}
 
 	/**
-	 * The access control list can't answer now (a database outage, say): not a wrong password, so
+	 * The user registry can't answer now (a database outage, say): not a wrong password, so
 	 * not counted; the client is told to try again later and disconnected (RFC 4253: service not
 	 * available).
 	 */
-	private void unavailable(String name, AccessControlUnavailableException e) throws IOException {
-		logError("Can't check the login of "+name+" from "+getConnection().getRemoteAddress()+": "+e.getMessage());
+	private void unavailable(String name, String reason) throws IOException {
+		logError("Can't check the login of "+name+" from "+getConnection().getRemoteAddress()+": "+reason);
 		disconnect(SshConstants.SSH_DISCONNECT_SERVICE_NOT_AVAILABLE, "Can't check logins now, try again later");
 	}
 
+	/**
+	 * A request that didn't log in. A refused login was counted by the connection's
+	 * authenticate, which also holds this reply for the failure delay; after too many the
+	 * connection disconnects instead ({@link #onTooManyLoginFailures}).
+	 */
 	private void failed(String name) throws IOException {
-		failures++;
-		logDebug(() -> "Authentication failure "+failures+" for "+name+" from "+getConnection().getRemoteAddress());
-		if( server.isTooManyLoginFailures(failures) ) {
-			logInfo("Too many authentication failures for "+name+" from "+getConnection().getRemoteAddress());
-			disconnect(SshConstants.SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE, "Too many authentication failures");
+		logDebug(() -> "Authentication failure for "+name+" from "+getConnection().getRemoteAddress());
+		INioConnection c = getConnection();
+		if( c instanceof NioConnection && ((NioConnection) c).isTooManyLoginFailures() ) {
+			// no USERAUTH_FAILURE: the DISCONNECT follows once the delay has passed
 			return;
 		}
-		long delay = server.getLoginFailureDelay();
-		if( delay > 0 ) {
-			// Slows down guessing; the client waits for the answer, the thread doesn't
-			server.getScheduler().schedule(() -> {
-				try {
-					sendFailure();
-				} catch (IOException e) {
-					logDebug("Can't send USERAUTH_FAILURE", e);
-				}
-			}, delay, TimeUnit.MILLISECONDS);
-		} else {
-			sendFailure();
-		}
+		sendFailure();
+	}
+
+	/**
+	 * Too many refused logins (the server's maxLoginAttempts): once the failure delay has
+	 * passed, the client is disconnected (no more authentication methods).
+	 */
+	@Override
+	public void onTooManyLoginFailures(INioConnection c) throws Exception {
+		logInfo("Too many authentication failures from "+c.getRemoteAddress());
+		disconnect(SshConstants.SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE, "Too many authentication failures");
 	}
 
 	private void sendFailure() throws IOException {

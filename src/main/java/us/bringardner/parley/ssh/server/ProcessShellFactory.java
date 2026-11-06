@@ -38,8 +38,8 @@ import java.util.List;
  * it reads commands as lines.
  * <p>
  * <b>The shell runs as the user the server runs as</b>, whoever logged in: give it only to
- * users who may do anything that account can (with an access control list, they need the
- * "shell" permission). It is not used unless set with
+ * users who may do anything that account can (they need the "shell" permission, which the
+ * user registry gives). It is not used unless set with
  * {@link SshServer#setShellFactory(IShellFactory)} or the shellFactory property.
  *
  * @author Tony Bringardner

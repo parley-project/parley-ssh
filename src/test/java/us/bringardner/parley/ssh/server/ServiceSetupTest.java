@@ -93,6 +93,8 @@ public class ServiceSetupTest {
 	private SshServer start() throws Exception {
 		set("port", "0");
 		set(ServiceSetup.PROPERTY_HOMES, homes.getPath());
+		// the users: any name (a key or certificate decides who logs in)
+		set(us.bringardner.parley.net.server.IBaseServer.AUTHENTICATION_PROVIDER_PROPERTY, TestUsers.class.getName());
 		SshServer s = new SshServer(ServiceSetup.DEFAULT_PORT);
 		s.setName("service-test");
 		server = s;
@@ -204,13 +206,26 @@ public class ServiceSetupTest {
 		assertThrows(java.io.IOException.class, this::start);
 	}
 
+	/** No user registry: nobody could log in, so the service doesn't start (parley-iam: no built-in users) */
+	@Test
+	public void noUserRegistryStopsTheStart() throws Exception {
+		set("port", "0");
+		set(ServiceSetup.PROPERTY_HOMES, homes.getPath());
+		SshServer s = new SshServer(ServiceSetup.DEFAULT_PORT);
+		s.setName("service-test");
+		java.io.IOException e = assertThrows(java.io.IOException.class, () -> new ServiceSetup(fs(conf), false, false).configure(s));
+		assertTrue(e.getMessage().contains(SshServer.PROPERTY_PREFIX+"."+us.bringardner.parley.net.server.IBaseServer.AUTHENTICATION_PROVIDER_PROPERTY), e.getMessage());
+	}
+
 	@Test
 	public void sftpRoot() throws Exception {
 		File h = new File("/home");
-		SshPrincipal p = new SshPrincipal("frank");
+		us.bringardner.parley.iam.EntityId id = us.bringardner.parley.iam.EntityId.of("user:frank");
+		us.bringardner.parley.iam.ParleyPrincipal p = us.bringardner.parley.iam.BasicParleyPrincipal.user(id, "frank");
 		assertEquals(fs(new File(h, "frank")), SftpSetup.rootOf(p, "frank", fs(h)));
-		p.setParameter(SftpSetup.PARAMETER_USER_ROOT, "/srv/frank");
-		assertEquals(fs(new File("/srv/frank")), SftpSetup.rootOf(p, "frank", fs(h)), "the access control list's userRoot, as FTP");
+		p = new us.bringardner.parley.iam.BasicParleyPrincipal(id, "frank", false,
+				Collections.singletonMap(SftpSetup.PARAMETER_USER_ROOT, "/srv/frank"));
+		assertEquals(fs(new File("/srv/frank")), SftpSetup.rootOf(p, "frank", fs(h)), "the principal's userRoot, as FTP");
 		assertNull(SftpSetup.rootOf(null, "..", fs(h)));
 		assertNull(SftpSetup.rootOf(null, "a/b", fs(h)));
 		assertNull(SftpSetup.rootOf(null, "-x", fs(h)));
@@ -257,7 +272,8 @@ public class ServiceSetupTest {
 		user("alice", alice);
 		// (the settings file in the administrator folder, read without being named)
 		Files.write(new File(conf, ServiceSetup.CONFIG_FILE_NAME).toPath(),
-				("parley.ssh.port=0\nparley.ssh.homes="+homes.getPath().replace("\\", "\\\\")+"\n").getBytes(StandardCharsets.UTF_8));
+				("parley.ssh.port=0\nparley.ssh.homes="+homes.getPath().replace("\\", "\\\\")+"\n"
+						+"parley.ssh.authenticationProvider="+TestUsers.class.getName()+"\n").getBytes(StandardCharsets.UTF_8));
 		Process p = main();
 		try {
 			StringBuilder out = new StringBuilder();
@@ -283,7 +299,8 @@ public class ServiceSetupTest {
 	@Test
 	public void exitsWithOneWhenItCannotStart() throws Exception {
 		try (ServerSocket taken = new ServerSocket(0)) {
-			Process p = main("-Dparley.ssh.port="+taken.getLocalPort(), "-Dparley.ssh.homes="+homes.getPath());
+			Process p = main("-Dparley.ssh.port="+taken.getLocalPort(), "-Dparley.ssh.homes="+homes.getPath(),
+					"-Dparley.ssh.authenticationProvider="+TestUsers.class.getName());
 			try {
 				assertTrue(p.waitFor(60, TimeUnit.SECONDS), "the process ends");
 				assertEquals(1, p.exitValue());

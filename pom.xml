@@ -165,6 +165,12 @@
 			<artifactId>parley-net</artifactId>
 			<version>${project.version}</version>
 		</dependency>
+		<!-- Used directly: users, logins and permissions (UserRegistry, ParleyPrincipal, ProofCredential) -->
+		<dependency>
+			<groupId>us.bringardner.parley</groupId>
+			<artifactId>parley-iam</artifactId>
+			<version>${project.version}</version>
+		</dependency>
 		<dependency>
 			<!-- SshBuffer is built on WireBuffer -->
 			<groupId>us.bringardner.parley</groupId>

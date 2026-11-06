@@ -56,7 +56,7 @@ public class ShellCommandTest {
 		System.setProperty(PROPERTY, "/bin/sh -c \"echo SHELL-WAS-RUN; tty; stty size; ps -o sid=,pid= -p $$; exit 5\"");
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers());
 		server.setLoginFailureDelay(0);
 		server.startAndWait(5000);
 		assertTrue(server.getShellFactory() instanceof ProcessShellFactory, "made from the property");

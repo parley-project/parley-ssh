@@ -31,20 +31,19 @@ import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.iam.PasswordCredential;
 import us.bringardner.parley.ssh.SshBuffer;
 
 /**
- * "password" (RFC 4252 8). Password changes are not supported: such a request fails.
+ * "password" (RFC 4252 8): the password goes to the session's authenticate as a
+ * {@link PasswordCredential}, so the server's user registry checks it. Password changes are
+ * not supported: such a request fails.
  *
  * @author Tony Bringardner
  */
 public class PasswordAuthMethod implements IServerAuthMethod {
 
-	private final IPasswordAuthenticator authenticator;
-
-	public PasswordAuthMethod(IPasswordAuthenticator authenticator) {
-		this.authenticator = authenticator;
+	public PasswordAuthMethod() {
 	}
 
 	@Override
@@ -62,11 +61,22 @@ public class PasswordAuthMethod implements IServerAuthMethod {
 		}
 		char[] password = decode(pw);
 		try {
-			IPrincipal p = authenticator.authenticate(user, password, context);
-			return p == null ? Result.FAILURE : Result.success(p);
+			return login(context, user, password);
 		} finally {
 			Arrays.fill(password, '\0');
 			Arrays.fill(pw, (byte) 0);
+		}
+	}
+
+	/**
+	 * Log the session in with a password (the session's authenticate; the registry checks it).
+	 */
+	static Result login(IServerAuthContext context, String user, char[] password) {
+		PasswordCredential credential = new PasswordCredential(user, password, context.getRequester());
+		try {
+			return Result.of(context.authenticate(credential));
+		} finally {
+			credential.clear();
 		}
 	}
 

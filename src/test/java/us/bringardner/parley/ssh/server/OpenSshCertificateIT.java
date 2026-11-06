@@ -75,6 +75,7 @@ public class OpenSshCertificateIT {
 
 		// Our server: the host key and its certificate from files, users through the CA
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(HostKeyProviders.fromFiles(fs(f("host"))));
 		server.setPublicKeyAuthenticator(UserCertificateAuthenticator.fromFile(fs(f("ca.pub"))));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));

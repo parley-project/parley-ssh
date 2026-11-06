@@ -28,8 +28,8 @@ package us.bringardner.parley.ssh.server;
 /**
  * Decides which port forwarding a user may do. Forwarding lets a logged in user reach other
  * hosts through the server (-L) or open ports on it (-R), so a server refuses all of it
- * unless it has a filter; with an access control list the user also needs the "forward"
- * permission.
+ * unless it has a filter; the user also needs the "forward" permission (the user registry
+ * decides who holds it).
  *
  * @author Tony Bringardner
  * @see ForwardingFilters

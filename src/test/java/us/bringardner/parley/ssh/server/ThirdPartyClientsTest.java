@@ -63,7 +63,7 @@ public class ThirdPartyClientsTest {
 
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPasswordAuthenticator((user, pw, ctx) -> "alice".equals(user) && "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
+		server.setUserRegistry(new TestUsers("secret", "alice"));
 		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
 		server.setLoginFailureDelay(10);

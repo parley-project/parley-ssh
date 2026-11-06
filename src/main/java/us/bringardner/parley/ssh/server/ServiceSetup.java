@@ -48,10 +48,12 @@ import us.bringardner.parley.ssh.SshFiles;
  * CONF is the folder of Parley's administrator file: /etc/parley (Windows
  * %ProgramData%\Parley), or the folder of the file the PARLEY_CONF environment variable names.
  * <p>
- * Logins: passwords through the access control list ({@code parley.ssh.authenticationProvider};
- * none without it), keys in each user's HOMES/USER/.ssh/authorized_keys, and user certificates
- * signed by a trusted CA. SFTP puts each user in their
- * home: the access control list's {@code userRoot} parameter, as for FTP, else HOMES/USER.
+ * Logins: the user registry ({@code parley.ssh.authenticationProvider}, a parley-iam
+ * {@code UserRegistry}; required) says who the users are and what they may do, and checks
+ * passwords; keys are in each user's HOMES/USER/.ssh/authorized_keys, and user certificates
+ * are signed by a trusted CA (a key or certificate logs in a user the registry knows). SFTP
+ * puts each user in their home: the principal's {@code userRoot} attribute, as for FTP, else
+ * HOMES/USER.
  * <p>
  * Every session runs as the account the service runs as, whoever logged in.
  *
@@ -96,6 +98,8 @@ final class ServiceSetup {
 
 	/**
 	 * Set up the server from its settings: the port, host keys, logins and SFTP.
+	 *
+	 * @throws IOException when a setting is wrong, or there is no user registry (nobody could log in)
 	 */
 	void configure(SshServer server) throws IOException {
 		String port = setting(server, "port");
@@ -128,8 +132,11 @@ final class ServiceSetup {
 		}
 		server.setPublicKeyAuthenticator(keys);
 		server.logInfo("authorized_keys in "+homes+sep+"USER"+sep+".ssh");
-		if( server.getAccessControl() == null ) {
-			server.logInfo("No access control list ("+SshServer.PROPERTY_PREFIX+".authenticationProvider): no password logins");
+		try {
+			// a missing registry is an error (parley-iam: there are no built-in users)
+			server.requireUserRegistry();
+		} catch (IllegalStateException e) {
+			throw new IOException(e.getMessage());
 		}
 
 		SftpSetup.add(server, homes);

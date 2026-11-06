@@ -27,12 +27,18 @@ package us.bringardner.parley.ssh.server;
 
 import java.io.IOException;
 
-import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.iam.AuthenticationResult;
+import us.bringardner.parley.iam.ParleyPrincipal;
 import us.bringardner.parley.ssh.SshBuffer;
 
 /**
  * A server side user authentication method (RFC 4252), e.g. "password" or "publickey".
  * The server offers the methods it has, in order; a request for one goes to it.
+ * <p>
+ * A method logs the session in only through the session's own door,
+ * {@link IServerAuthContext#authenticate}: the server's user registry says who the user is,
+ * and the session counts (and slows down) refused logins. A success the session didn't log in
+ * is treated as a failure.
  * <p>
  * Methods are shared by all sessions: keep per-session state in the context.
  *
@@ -48,26 +54,55 @@ public interface IServerAuthMethod {
 	 */
 	final class Result {
 		/** Not authenticated */
-		public static final Result FAILURE = new Result(null, false);
+		public static final Result FAILURE = new Result(null, false, null);
 		/** The method sent its own message (PK_OK, INFO_REQUEST) and waits for the client */
-		public static final Result PENDING = new Result(null, true);
+		public static final Result PENDING = new Result(null, true, null);
 
-		private final IPrincipal principal;
+		private final ParleyPrincipal principal;
 		private final boolean pending;
+		private final String unavailable;
 
-		private Result(IPrincipal principal, boolean pending) {
+		private Result(ParleyPrincipal principal, boolean pending, String unavailable) {
 			this.principal = principal;
 			this.pending = pending;
+			this.unavailable = unavailable;
 		}
 
 		/**
-		 * @param principal the authenticated user
+		 * @param principal the authenticated user, as the session's authenticate gave it
 		 */
-		public static Result success(IPrincipal principal) {
+		public static Result success(ParleyPrincipal principal) {
 			if( principal == null ) {
 				throw new IllegalArgumentException("principal");
 			}
-			return new Result(principal, false);
+			return new Result(principal, false, null);
+		}
+
+		/**
+		 * The user registry can't answer now (a database outage, say): not a wrong password.
+		 * The session tells the client to try again later.
+		 *
+		 * @param reason why, for the log
+		 * @since 2.0.0
+		 */
+		public static Result unavailable(String reason) {
+			return new Result(null, false, reason == null ? "unavailable" : reason);
+		}
+
+		/**
+		 * @param result what the session's authenticate (or the server's probe) answered
+		 * @return success for AUTHENTICATED, unavailable for UNAVAILABLE, else FAILURE
+		 * @since 2.0.0
+		 */
+		public static Result of(AuthenticationResult result) {
+			switch (result.getStatus()) {
+				case AUTHENTICATED:
+					return success(result.getPrincipal());
+				case UNAVAILABLE:
+					return unavailable(result.getReason());
+				default:
+					return FAILURE;
+			}
 		}
 
 		public boolean isSuccess() {
@@ -78,7 +113,23 @@ public interface IServerAuthMethod {
 			return pending;
 		}
 
-		public IPrincipal getPrincipal() {
+		/**
+		 * @return true when the user registry couldn't answer
+		 * @since 2.0.0
+		 */
+		public boolean isUnavailable() {
+			return unavailable != null;
+		}
+
+		/**
+		 * @return why the user registry couldn't answer, or null
+		 * @since 2.0.0
+		 */
+		public String getReason() {
+			return unavailable;
+		}
+
+		public ParleyPrincipal getPrincipal() {
 			return principal;
 		}
 	}

@@ -28,7 +28,10 @@ package us.bringardner.parley.ssh.server;
 import java.io.IOException;
 import java.security.PublicKey;
 
-import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.iam.AuthenticationResult;
+import us.bringardner.parley.iam.ProofCredential;
+import us.bringardner.parley.iam.ProofVerifier;
+import us.bringardner.parley.iam.StoredCredentialType;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
@@ -44,6 +47,11 @@ import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
  * authenticator decides whose key it is. Only the server's signature algorithms are
  * accepted (SHA-1 ssh-rsa only if turned on). A key with an OpenSSH certificate goes to the
  * authenticator's certificate method.
+ * <p>
+ * Both are a parley-iam {@link ProofCredential} of {@link StoredCredentialType#SSH_PUBLIC_KEYS}
+ * whose {@link ProofVerifier} is this check: a query is the server's probe (nothing logged in
+ * or counted), a signed request the session's authenticate. The user must be known to the
+ * server's user registry (see {@link SshServer#authenticate}).
  *
  * @author Tony Bringardner
  */
@@ -53,6 +61,8 @@ public class PublicKeyAuthMethod implements IServerAuthMethod {
 	public static final String CERTIFICATE = PublicKeyAuthMethod.class.getName()+".certificate";
 	/** The auth context attribute that holds the logged in key's {@link KeyRestrictions} */
 	public static final String RESTRICTIONS = PublicKeyAuthMethod.class.getName()+".restrictions";
+	/** The method's name, and the login method of a principal it logs in */
+	static final String NAME = "publickey";
 
 	private final IPublicKeyAuthenticator authenticator;
 
@@ -62,7 +72,7 @@ public class PublicKeyAuthMethod implements IServerAuthMethod {
 
 	@Override
 	public String getName() {
-		return "publickey";
+		return NAME;
 	}
 
 	/**
@@ -109,49 +119,77 @@ public class PublicKeyAuthMethod implements IServerAuthMethod {
 			context.getServer().logInfo("Revoked "+(cert != null ? "certificate "+cert : "key "+SshPublicKeys.fingerprint(blob))+" refused for "+user);
 			return Result.FAILURE;
 		}
+		byte[] signature = signed ? data.getString() : null;
+		PublicKey userKey = key;
+		SshCertificate certificate = cert;
+		// what the key may do, found by the check
+		KeyRestrictions[] restrictions = new KeyRestrictions[1];
+		ProofVerifier check = stored -> {
+			KeyRestrictions r = accepted(context, user, userKey, certificate);
+			if( r == null ) {
+				return false;
+			}
+			if( signature != null ) {
+				SshBuffer b = new SshBuffer();
+				b.putString(context.getSessionId());
+				b.putByte(SshConstants.SSH_MSG_USERAUTH_REQUEST);
+				b.putString(user);
+				b.putString(context.getService());
+				b.putString(getName());
+				b.putBoolean(true);
+				b.putString(alg);
+				b.putString(blob);
+				if( !sig.verify(userKey, b.toByteArray(), signature) ) {
+					return false;
+				}
+				if( userKey instanceof SkPublicKey && !securityKeyFlagsOk(context.getServer(), r, SkSignature.flags(signature), user) ) {
+					return false;
+				}
+			}
+			restrictions[0] = r;
+			return true;
+		};
+		ProofCredential proof = new ProofCredential(user, StoredCredentialType.SSH_PUBLIC_KEYS, check, context.getRequester());
+		if( !signed ) {
+			// a query: would this key do? Nothing is logged in or counted
+			AuthenticationResult would = context.probe(proof);
+			if( would.getStatus() == AuthenticationResult.Status.AUTHENTICATED ) {
+				context.send(SshBuffer.message(SshConstants.SSH_MSG_USERAUTH_60).putString(alg).putString(blob));
+				return Result.PENDING;
+			}
+			return would.getStatus() == AuthenticationResult.Status.UNAVAILABLE ? Result.unavailable(would.getReason()) : Result.FAILURE;
+		}
+		AuthenticationResult result = context.authenticate(proof);
+		if( result.getStatus() == AuthenticationResult.Status.AUTHENTICATED ) {
+			if( cert != null ) {
+				context.getAttributes().put(CERTIFICATE, cert);
+			}
+			// The session applies them (see ServerSession.getKeyRestrictions)
+			context.getAttributes().put(RESTRICTIONS, restrictions[0]);
+		}
+		return Result.of(result);
+	}
+
+	/**
+	 * Whether the authenticator lets the key (or certificate) log in as the user, and what it
+	 * may do then.
+	 *
+	 * @return the key's restrictions (its authorized_keys options and certificate), or null
+	 * when it may not log in
+	 */
+	private KeyRestrictions accepted(IServerAuthContext context, String user, PublicKey key, SshCertificate cert) throws IOException {
 		// The authenticator may say what the key may do (authorized_keys options)
 		context.getAttributes().remove(KeyRestrictions.ATTRIBUTE);
-		IPrincipal p = cert != null ? authenticator.authenticate(user, cert, context) : authenticator.authenticate(user, key, context);
+		boolean ok = cert != null ? authenticator.authenticate(user, cert, context) : authenticator.authenticate(user, key, context);
 		KeyRestrictions line = (KeyRestrictions) context.getAttributes().remove(KeyRestrictions.ATTRIBUTE);
-		KeyRestrictions r;
-		if( cert != null ) {
-			// The certificate's, and the cert-authority line's when there is one
-			r = line == null ? KeyRestrictions.of(cert) : line.and(KeyRestrictions.of(cert));
-			if( r == null ) {
-				// The certificate and the authorized_keys line force different commands
-				return Result.FAILURE;
-			}
-		} else {
-			r = line == null ? KeyRestrictions.NONE : line;
-		}
-		if( p == null ) {
-			return Result.FAILURE;
-		}
-		if( !signed ) {
-			context.send(SshBuffer.message(SshConstants.SSH_MSG_USERAUTH_60).putString(alg).putString(blob));
-			return Result.PENDING;
-		}
-		byte[] signature = data.getString();
-		SshBuffer b = new SshBuffer();
-		b.putString(context.getSessionId());
-		b.putByte(SshConstants.SSH_MSG_USERAUTH_REQUEST);
-		b.putString(user);
-		b.putString(context.getService());
-		b.putString(getName());
-		b.putBoolean(true);
-		b.putString(alg);
-		b.putString(blob);
-		if( !sig.verify(key, b.toByteArray(), signature) ) {
-			return Result.FAILURE;
-		}
-		if( key instanceof SkPublicKey && !securityKeyFlagsOk(context.getServer(), r, SkSignature.flags(signature), user) ) {
-			return Result.FAILURE;
+		if( !ok ) {
+			return null;
 		}
 		if( cert != null ) {
-			context.getAttributes().put(CERTIFICATE, cert);
+			// The certificate's, and the cert-authority line's when there is one; null when
+			// the certificate and the authorized_keys line force different commands
+			return line == null ? KeyRestrictions.of(cert) : line.and(KeyRestrictions.of(cert));
 		}
-		// The session applies them (see ServerSession.getKeyRestrictions)
-		context.getAttributes().put(RESTRICTIONS, r);
-		return Result.success(p);
+		return line == null ? KeyRestrictions.NONE : line;
 	}
 }

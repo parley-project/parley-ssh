@@ -28,14 +28,14 @@ package us.bringardner.parley.ssh.server;
 import java.io.IOException;
 import java.util.Arrays;
 
-import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
 
 /**
  * "keyboard-interactive" (RFC 4256) asking for the password, as OpenSSH does with PAM:
- * one INFO_REQUEST with a hidden "Password: " prompt, answered by INFO_RESPONSE.
+ * one INFO_REQUEST with a hidden "Password: " prompt, answered by INFO_RESPONSE. The password
+ * is checked as {@link PasswordAuthMethod}'s is: by the session's authenticate.
  *
  * @author Tony Bringardner
  */
@@ -43,15 +43,13 @@ public class KeyboardInteractiveAuthMethod implements IServerAuthMethod {
 
 	private static final String USER = KeyboardInteractiveAuthMethod.class.getName()+".user";
 
-	private final IPasswordAuthenticator authenticator;
 	private final String prompt;
 
-	public KeyboardInteractiveAuthMethod(IPasswordAuthenticator authenticator) {
-		this(authenticator, "Password: ");
+	public KeyboardInteractiveAuthMethod() {
+		this("Password: ");
 	}
 
-	public KeyboardInteractiveAuthMethod(IPasswordAuthenticator authenticator, String prompt) {
-		this.authenticator = authenticator;
+	public KeyboardInteractiveAuthMethod(String prompt) {
 		this.prompt = prompt;
 	}
 
@@ -82,8 +80,7 @@ public class KeyboardInteractiveAuthMethod implements IServerAuthMethod {
 		byte[] pw = data.getString();
 		char[] password = PasswordAuthMethod.decode(pw);
 		try {
-			IPrincipal p = authenticator.authenticate(user, password, context);
-			return p == null ? Result.FAILURE : Result.success(p);
+			return PasswordAuthMethod.login(context, user, password);
 		} finally {
 			Arrays.fill(password, '\0');
 			Arrays.fill(pw, (byte) 0);

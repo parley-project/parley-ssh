@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
-import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.iam.ParleyPrincipal;
 
 /**
  * What a command, shell or subsystem knows about its session: the user, the client's
@@ -72,7 +72,7 @@ public class CommandEnvironment {
 		return session.getUser();
 	}
 
-	public IPrincipal getPrincipal() {
+	public ParleyPrincipal getPrincipal() {
 		return session.getPrincipal();
 	}
 

@@ -39,7 +39,6 @@ import java.util.function.Function;
 import us.bringardner.parley.core.BaseObject;
 import us.bringardner.parley.core.util.AddressMatcher;
 import us.bringardner.parley.files.FileSource;
-import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.ssh.SshException;
 import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
@@ -113,18 +112,18 @@ public class UserCertificateAuthenticator extends BaseObject implements IPublicK
 	 * Plain keys: never.
 	 */
 	@Override
-	public IPrincipal authenticate(String user, PublicKey key, IServerAuthContext context) {
-		return null;
+	public boolean authenticate(String user, PublicKey key, IServerAuthContext context) {
+		return false;
 	}
 
 	@Override
-	public IPrincipal authenticate(String user, SshCertificate cert, IServerAuthContext context) throws IOException {
+	public boolean authenticate(String user, SshCertificate cert, IServerAuthContext context) {
 		String why = refusal(user, cert, context.getRemoteAddress());
 		if( why != null ) {
 			logInfo("Certificate refused for "+user+" ("+cert+"): "+why);
-			return null;
+			return false;
 		}
-		return AuthorizedKeysAuthenticator.principal(user, context);
+		return true;
 	}
 
 	/**

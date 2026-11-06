@@ -26,7 +26,6 @@
 package us.bringardner.parley.ssh.server;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -40,6 +39,15 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import us.bringardner.parley.core.NamedThreadFactory;
+import us.bringardner.parley.iam.AuthenticationResult;
+import us.bringardner.parley.iam.Credential;
+import us.bringardner.parley.iam.ParleyPrincipal;
+import us.bringardner.parley.iam.PasswordCredential;
+import us.bringardner.parley.iam.ProofCredential;
+import us.bringardner.parley.iam.StoredCredential;
+import us.bringardner.parley.iam.StoredCredentialType;
+import us.bringardner.parley.iam.UserRegistry;
+import us.bringardner.parley.iam.UserRegistryUnavailableException;
 import us.bringardner.parley.net.nio.LineFrameDecoder;
 import us.bringardner.parley.net.nio.NioServer;
 import us.bringardner.parley.net.server.ServerMain;
@@ -52,20 +60,22 @@ import us.bringardner.parley.ssh.transport.SshTransport;
 /**
  * An SSH server on the framework's non-blocking {@link NioServer}, so it is configured like
  * any Parley server (port, bindAddress, maxConnections, the key store settings...) and logs
- * users in with the same access control list.
+ * users in with the same parley-iam user registry ({@code authenticationProvider} or
+ * {@link #setUserRegistry}). Without a registry nobody can log in.
  * <p>
  * <b>What it runs</b> is up to the plug-ins: {@link #setCommandFactory(ICommandFactory)} for
  * exec, {@link #setShellFactory(IShellFactory)} (or the {@value #PROPERTY_SHELL_FACTORY}
  * property; fsh by default when it is on the class path) for an interactive shell,
  * {@link #addSubsystem(ISubsystemFactory)} for subsystems such as SFTP. Without them those
- * requests are refused. With an access control list, a user also needs the permission
- * ("exec", "shell", or the subsystem name).
+ * requests are refused. A user also needs the permission ("exec", "shell", the subsystem
+ * name, or "forward"): the registry decides who holds it.
  * <p>
- * <b>Logging in</b>: password and keyboard-interactive through the access control list (or
- * {@link #setPasswordAuthenticator(IPasswordAuthenticator)}), publickey through
+ * <b>Logging in</b>: password and keyboard-interactive send the password to the registry
+ * (offered when it checks passwords); publickey checks the key with
  * {@link #setPublicKeyAuthenticator(IPublicKeyAuthenticator)} (e.g.
- * {@link AuthorizedKeysAuthenticator}), or any {@link IServerAuthMethod}s. At most
- * {@link #setMaxLoginAttempts(int)} failures, each answered after
+ * {@link AuthorizedKeysAuthenticator}) and takes the user from the registry; or any
+ * {@link IServerAuthMethod}s. Every login goes through the session's authenticate, which
+ * counts refused logins: at most {@link #setMaxLoginAttempts(int)}, each answered after
  * {@link #setLoginFailureDelay(int)}, within {@link #setLoginTimeLimit(int)} (OpenSSH's
  * defaults: 6 tries, 2 minutes; 250 ms delay).
  * <p>
@@ -120,7 +130,6 @@ public class SshServer extends NioServer {
 	private volatile List<KeyPair> hostKeys = Collections.emptyList();
 	private volatile List<SshCertificate> hostCertificates = Collections.emptyList();
 	private volatile List<IServerAuthMethod> authMethods;
-	private volatile IPasswordAuthenticator passwordAuthenticator;
 	private volatile IPublicKeyAuthenticator publicKeyAuthenticator;
 	private volatile ICommandFactory commandFactory;
 	private volatile IShellFactory shellFactory;
@@ -156,8 +165,8 @@ public class SshServer extends NioServer {
 	 * Run an SSH server as a service (systemd, launchd, a Windows service) until it is stopped, with
 	 * {@link ServerMain#run}: settings from the command line and parley-ssh.properties in Parley's
 	 * administrator folder (the command line wins), exit code 1 when it can't start, stopped with the
-	 * process. {@link ServiceSetup} sets up the host keys, the logins (passwords through the access
-	 * control list, each user's authorized_keys, trusted user certificates) and SFTP to each
+	 * process. {@link ServiceSetup} sets up the host keys, the logins (passwords through the user
+	 * registry, each user's authorized_keys, trusted user certificates) and SFTP to each
 	 * user's home.
 	 */
 	public static void main(String[] args) throws Exception {
@@ -246,8 +255,8 @@ public class SshServer extends NioServer {
 
 	/**
 	 * @return the methods offered, in order: the ones set, else publickey (with a public key
-	 * authenticator), then password and keyboard-interactive (with a password authenticator
-	 * or an access control list)
+	 * authenticator), then password and keyboard-interactive (when the user registry checks
+	 * passwords)
 	 */
 	public List<IServerAuthMethod> getAuthMethods() {
 		List<IServerAuthMethod> m = authMethods;
@@ -259,13 +268,10 @@ public class SshServer extends NioServer {
 		if( pk != null ) {
 			ret.add(new PublicKeyAuthMethod(pk));
 		}
-		IPasswordAuthenticator pw = passwordAuthenticator;
-		if( pw == null && getAccessControl() != null ) {
-			pw = aclPasswordAuthenticator();
-		}
-		if( pw != null ) {
-			ret.add(new PasswordAuthMethod(pw));
-			ret.add(new KeyboardInteractiveAuthMethod(pw));
+		UserRegistry registry = getUserRegistry();
+		if( registry != null && registry.supports(PasswordCredential.class, null) ) {
+			ret.add(new PasswordAuthMethod());
+			ret.add(new KeyboardInteractiveAuthMethod());
 		}
 		return Collections.unmodifiableList(ret);
 	}
@@ -283,28 +289,82 @@ public class SshServer extends NioServer {
 		return null;
 	}
 
+	/** What an SSH public key proof is checked against: the registry keeps no SSH keys (see {@link #authenticate}) */
+	private static final StoredCredential NO_REGISTRY_KEYS = new StoredCredential(StoredCredentialType.SSH_PUBLIC_KEYS, Collections.emptyList());
+
 	/**
-	 * @return passwords checked by the access control list (as the framework's servers do); a
-	 * list that can't answer now throws AccessControlUnavailableException, so the session says
-	 * "try again later" instead of counting a wrong password
+	 * As every Parley server, with one addition for SSH's public keys: a {@link ProofCredential}
+	 * of {@link StoredCredentialType#SSH_PUBLIC_KEYS} ({@link PublicKeyAuthMethod}'s) is proven
+	 * by its own verifier, which checks the key with the public key authenticator
+	 * (authorized_keys, trusted certificate authorities) and the signature; the stored secret it
+	 * is given is an empty list, since the user's keys are not the registry's. The user then
+	 * comes from the user registry ({@link UserRegistry#findPrincipal(String)}): a key for a user
+	 * the registry doesn't know is refused, and a registry that can't answer is UNAVAILABLE.
+	 * Every other credential goes to the registry as the framework sends it.
+	 *
+	 * @throws IllegalStateException when the server has no user registry
 	 */
-	public IPasswordAuthenticator aclPasswordAuthenticator() {
-		return (user, password, context) -> {
-			byte[] b = new String(password).getBytes(StandardCharsets.UTF_8);
-			try {
-				return checkLogin(user, b);
-			} finally {
-				java.util.Arrays.fill(b, (byte) 0);
+	@Override
+	public AuthenticationResult authenticate(Credential credential) {
+		ProofCredential proof = publicKeyProof(credential);
+		if( proof != null ) {
+			return checkPublicKey(proof, true);
+		}
+		return super.authenticate(credential);
+	}
+
+	/**
+	 * As {@link #authenticate}, without recording the outcome: for publickey's query
+	 * (would this key do?).
+	 *
+	 * @throws IllegalStateException when the server has no user registry
+	 */
+	@Override
+	public AuthenticationResult probe(Credential credential) {
+		ProofCredential proof = publicKeyProof(credential);
+		if( proof != null ) {
+			return checkPublicKey(proof, false);
+		}
+		return super.probe(credential);
+	}
+
+	/** @return the credential when it is a proof of SSH public keys, else null */
+	private static ProofCredential publicKeyProof(Credential credential) {
+		if( credential instanceof ProofCredential ) {
+			ProofCredential proof = (ProofCredential) credential;
+			if( StoredCredentialType.SSH_PUBLIC_KEYS.equals(proof.getStoredType()) ) {
+				return proof;
 			}
-		};
+		}
+		return null;
 	}
 
-	public IPasswordAuthenticator getPasswordAuthenticator() {
-		return passwordAuthenticator;
-	}
-
-	public void setPasswordAuthenticator(IPasswordAuthenticator authenticator) {
-		this.passwordAuthenticator = authenticator;
+	private AuthenticationResult checkPublicKey(ProofCredential proof, boolean record) {
+		UserRegistry registry = requireUserRegistry();
+		String user = proof.getUser();
+		AuthenticationResult result;
+		try {
+			boolean proven;
+			try {
+				proven = user != null && proof.getVerifier().verify(NO_REGISTRY_KEYS);
+			} catch (IOException e) {
+				logDebug("Can't check the key of "+user, e);
+				proven = false;
+			}
+			if( !proven ) {
+				result = AuthenticationResult.refused("publickey not accepted for "+user);
+			} else {
+				ParleyPrincipal principal = registry.findPrincipal(user);
+				result = principal == null ? AuthenticationResult.refused("no user "+user)
+						: AuthenticationResult.authenticated(principal, PublicKeyAuthMethod.NAME);
+			}
+		} catch (UserRegistryUnavailableException e) {
+			result = AuthenticationResult.unavailable(e.getMessage());
+		}
+		if( record ) {
+			registry.recordOutcome(user, result);
+		}
+		return result;
 	}
 
 	public IPublicKeyAuthenticator getPublicKeyAuthenticator() {

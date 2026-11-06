@@ -39,8 +39,8 @@ read; OpenSSH and PKCS#8 files are written.
 - An `ssh` command for the command line (`Ssh`, see [The ssh command](#the-ssh-command))
 
 **Server**
-- Login with password and keyboard-interactive through the access control list every Parley server
-  uses, with `authorized_keys` files (including their options: `command=`, `from=`, `no-pty`,
+- Login with password and keyboard-interactive through the parley-iam user registry every Parley
+  server uses, with `authorized_keys` files (including their options: `command=`, `from=`, `no-pty`,
   `permitopen=`, `restrict`, `cert-authority`...), with user certificates from trusted certificate
   authorities, and with FIDO security keys (`sk-ecdsa`, `sk-ed25519`; touch and PIN rules as in
   OpenSSH)
@@ -219,11 +219,36 @@ SshServer server = new SshServer(2222);
 server.setHostKeyProvider(HostKeyProviders.generated(new File("/var/myapp/ssh")));
 server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forHomes(new File("/home")));
 server.addSubsystem(SftpSubsystemFactory.forRoot(root));      // root: any FileSource
+server.setUserRegistry(registry);                              // or the authenticationProvider setting
 server.startAndWait(10000);
 ```
 
-Without a password authenticator the server uses its access control list for passwords, as every
-Parley server does.
+See [Users and logins](#users-and-logins).
+
+### Users and logins
+
+Who may log in, and what they may do, comes from a parley-iam `UserRegistry`, named with
+`parley.ssh.authenticationProvider` or given with `setUserRegistry()`, as for every Parley server. A
+server with no registry logs nobody in: a login is disconnected with "service not available" and the
+error names the setting. There are no built-in users.
+
+- **Passwords** (`password` and `keyboard-interactive`) go to the registry; the methods are offered when the
+  registry checks passwords (`supports(PasswordCredential.class, null)`).
+- **Public keys and certificates** (`publickey`): the server's `IPublicKeyAuthenticator` (`authorized_keys`
+  files, trusted certificate authorities) says whether the key may log in as the user, and the signature is
+  checked; the user must be one the registry knows (`findPrincipal`), and is that principal. A key query without
+  a signature uses the server's `probe`.
+- **A registry that can't answer now** (a database outage): the client is disconnected with "service not
+  available" ("Can't check logins now, try again later"); it isn't counted as a failed login.
+- **Failed logins** are counted by parley-net: each refused password or signed key is answered after
+  `loginFailureDelay`, and after `maxLoginAttempts` the client is disconnected. A refused key query isn't counted.
+- **Permissions** are checked on the server as a whole: `exec`, `shell`, the subsystem's name (`sftp`) and
+  `forward`. The registry decides who holds them (with parley-net's `FileUserRegistry`, list them in the user's
+  permissions: `alice, {PBKDF2}..., exec|shell|sftp|forward`). A registry that can't answer gets "service not
+  available" and the client is disconnected.
+- **SFTP's root** (the service, and `SftpSubsystemFactory`s that ask) comes from the principal's `userRoot`
+  attribute when the registry gives one.
+
 
 ### Properties
 
@@ -239,7 +264,7 @@ class on the class path, each named with the server's prefix, `parley.ssh`: the 
 | `maxConnections` | Connections at a time; more are refused | no limit |
 | `backlog` | Connections waiting to be accepted | the system's |
 | `tcpNoDelay`, `keepAlive` | TCP_NODELAY and SO_KEEPALIVE on connections | off |
-| `authenticationProvider` | Class name of the access control list (users, passwords, permissions), e.g. `us.bringardner.parley.net.server.FileBasedAcl` | none |
+| `authenticationProvider` | Class name of the parley-iam user registry (users, passwords, permissions), e.g. `us.bringardner.parley.net.server.FileUserRegistry` | none: nobody can log in |
 | `hostKeyDir` | Where host keys are made and kept (with `*-cert.pub` host certificates) | the working directory |
 | `keyStoreName`, `keyStorePassword`, `keyStoreType` | Host keys from a key store's RSA and EC entries instead of `hostKeyDir` | not used |
 | `shellFactory` | Class name of the `IShellFactory` that answers "shell" requests, or `none` | fsh when it is on the class path, else none (shells refused) |
@@ -257,7 +282,7 @@ servers that block a thread per connection).
 
 | `SshServer` method | What it does | Default |
 |---|---|---|
-| `setPasswordAuthenticator`, `setPublicKeyAuthenticator`, `setAuthMethods` | How users log in | the access control list for passwords |
+| `setUserRegistry`, `setPublicKeyAuthenticator`, `setAuthMethods` | Who the users are and how they log in | `authenticationProvider`; no public keys |
 | `setHostKeyProvider` | Where host keys (and host certificates) come from | `hostKeyDir` or the key store |
 | `setCommandFactory`, `setShellFactory`, `addSubsystem` | What "exec", "shell" and subsystem requests run | refused, except shells: fsh when it is on the class path |
 | `setForwardingFilter` | Which port forwardings are allowed (`ForwardingFilters.localOnly()`...) | none: refused |
@@ -282,8 +307,8 @@ servers that block a thread per connection).
 
 **Running operating system commands is opt-in, and they run as the account the server runs as,
 whoever logged in.** Give `ProcessCommandFactory` and `ProcessShellFactory` only to users who may do
-anything that account can (with an access control list, they need the "exec" or "shell"
-permission).
+anything that account can (they need the "exec" or "shell" permission, which the user registry
+gives).
 
 ### Running as a service
 
@@ -304,17 +329,17 @@ command line and a settings file (the command line wins), then it sets the serve
 | Host keys (made the first time, folder readable by its owner only) | `parley.ssh.hostKeyDir` | `CONF/ssh` |
 | Users' homes | `parley.ssh.homes` | `/home` (macOS `/Users`, Windows `C:\Users`) |
 | Trusted user CAs (OpenSSH's TrustedUserCAKeys) | `parley.ssh.trustedUserCaKeys` | `CONF/ssh/trusted_user_ca_keys`, when it is there |
-| Passwords | `parley.ssh.authenticationProvider` | none: no password logins |
+| Users (a parley-iam user registry; required) | `parley.ssh.authenticationProvider` | none: the service doesn't start |
 
 `CONF` is the folder of Parley's administrator file: `/etc/parley` (Windows `%ProgramData%\Parley`),
-or the folder of the file the `PARLEY_CONF` environment variable names. Users log in with a password
-(the access control list), a key in `HOMES/USER/.ssh/authorized_keys`, or a certificate signed by a
-trusted CA. SFTP puts each user in their home: the access
-control list's `userRoot` parameter (the one FTP uses), else `HOMES/USER`; a user with neither
-folder gets no SFTP. The shell is fsh when it is on the class path (`shellFactory`).
+or the folder of the file the `PARLEY_CONF` environment variable names. The user registry says who
+the users are; they log in with a password (checked by the registry), a key in
+`HOMES/USER/.ssh/authorized_keys`, or a certificate signed by a trusted CA. SFTP puts each user in
+their home: the principal's `userRoot` attribute (the one FTP uses), else `HOMES/USER`; a user with
+neither folder gets no SFTP. The shell is fsh when it is on the class path (`shellFactory`).
 
-The process exits with 1 when the server can't start (a port in use, a missing CA file, an access
-control list or shell that can't be made), so the service manager sees it. Stopping the process
+The process exits with 1 when the server can't start (a port in use, a missing CA file, no user
+registry, or a shell that can't be made), so the service manager sees it. Stopping the process
 (SIGTERM) stops the server; under systemd, give `SuccessExitStatus=143`.
 
 **Every session runs as the service's account, whoever logged in**: fsh and SFTP see that account's
@@ -412,8 +437,7 @@ default off, and setting another shell replaces it. `ProcessShellFactory` runs t
 system's login shell instead.
 
 **fsh works with the access of the account the server runs as**, whoever logged in. Adding fsh to a
-server's class path gives every user who can log in a shell (with an access control list, only
-users with the "shell" permission): set `shellFactory=none` if they shouldn't have one.
+server's class path gives a shell to every user who can log in and holds the "shell" permission: set `shellFactory=none` if they shouldn't have one.
 
 ## Not supported
 

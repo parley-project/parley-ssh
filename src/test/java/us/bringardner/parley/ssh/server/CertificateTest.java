@@ -200,6 +200,7 @@ public class CertificateTest {
 
 	private SshServer startServer(IHostKeyProvider hostKeys, IPublicKeyAuthenticator auth) throws Exception {
 		server = new SshServer(0);
+		server.setUserRegistry(TestUsers.keysOnly());
 		server.setHostKeyProvider(hostKeys);
 		server.setPublicKeyAuthenticator(auth);
 		server.setCommandFactory((line, env) -> ServerTest.command(line));

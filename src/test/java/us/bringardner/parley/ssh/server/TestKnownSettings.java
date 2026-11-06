@@ -54,8 +54,8 @@ public class TestKnownSettings {
 		SshServer server = new SshServer(ServiceSetup.DEFAULT_PORT);
 		SshClient client = new SshClient();
 		try {
+			server.setUserRegistry(new TestUsers());
 			new ServiceSetup(fs(conf), false, false).configure(server);
-			server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
 			server.startAndWait(5000);
 			client.setHostKeyVerifier(HostKeyVerifiers.acceptAll());
 			ClientSession s = client.connectAndWait("localhost", port);
