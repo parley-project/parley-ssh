@@ -171,13 +171,12 @@
 			<artifactId>parley-io</artifactId>
 			<version>${project.version}</version>
 		</dependency>
-		<!-- The SFTP server (us.bringardner.parley.ssh.sftp.server) serves FileSource file systems.
-		     Optional: users of the client and of the server without SFTP don't need it -->
+		<!-- Keys, certificates, known_hosts, authorized_keys and config files are FileSources, and
+		     the SFTP server (us.bringardner.parley.ssh.sftp.server) serves FileSource file systems -->
 		<dependency>
 			<groupId>us.bringardner.parley</groupId>
 			<artifactId>parley-files</artifactId>
 			<version>${project.version}</version>
-			<optional>true</optional>
 		</dependency>
 		<!-- Pseudo terminals for operating system commands (ProcessShellFactory, and
 		     ProcessCommandFactory when the client asks for a pty): Java can't make one. Optional:

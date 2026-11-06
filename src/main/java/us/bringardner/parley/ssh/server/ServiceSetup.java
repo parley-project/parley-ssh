@@ -25,12 +25,11 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermissions;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.net.server.ServerMain;
+import us.bringardner.parley.ssh.SshFiles;
 
 /**
  * How {@link SshServer#main(String[])} sets up a server run as a service (systemd, launchd, a
@@ -51,7 +50,7 @@ import us.bringardner.parley.net.server.ServerMain;
  * <p>
  * Logins: passwords through the access control list ({@code parley.ssh.authenticationProvider};
  * none without it), keys in each user's HOMES/USER/.ssh/authorized_keys, and user certificates
- * signed by a trusted CA. SFTP (when parley-files is on the class path) puts each user in their
+ * signed by a trusted CA. SFTP puts each user in their
  * home: the access control list's {@code userRoot} parameter, as for FTP, else HOMES/USER.
  * <p>
  * Every session runs as the account the service runs as, whoever logged in.
@@ -68,31 +67,31 @@ final class ServiceSetup {
 	static final String TRUSTED_USER_CA_KEYS_FILE = "trusted_user_ca_keys";
 	static final int DEFAULT_PORT = 22;
 
-	private final File confDir;
+	private final FileSource confDir;
 	private final boolean windows;
 	private final boolean mac;
 
-	ServiceSetup(File confDir, boolean windows, boolean mac) {
+	ServiceSetup(FileSource confDir, boolean windows, boolean mac) {
 		this.confDir = confDir;
 		this.windows = windows;
 		this.mac = mac;
 	}
 
 	/** For this machine: Parley's administrator folder (ServerMain.confDir) and the operating system */
-	static ServiceSetup forThisMachine() {
+	static ServiceSetup forThisMachine() throws IOException {
 		String os = System.getProperty("os.name", "").toLowerCase();
-		return new ServiceSetup(ServerMain.confDir(), os.startsWith("windows"), os.startsWith("mac"));
+		return new ServiceSetup(SshFiles.local(ServerMain.confDir().getPath()), os.startsWith("windows"), os.startsWith("mac"));
 	}
 
-	File getConfDir() {
+	FileSource getConfDir() {
 		return confDir;
 	}
 
-	File defaultHomes() {
+	FileSource defaultHomes() throws IOException {
 		if( windows ) {
-			return new File(System.getenv().getOrDefault("SystemDrive", "C:")+"\\Users");
+			return SshFiles.local(System.getenv().getOrDefault("SystemDrive", "C:")+"\\Users");
 		}
-		return new File(mac ? "/Users" : "/home");
+		return SshFiles.local(mac ? "/Users" : "/home");
 	}
 
 	/**
@@ -109,17 +108,18 @@ final class ServiceSetup {
 		}
 
 		if( setting(server, SshServer.PROPERTY_HOST_KEY_DIR) == null && server.getKeyStoreFileName() == null ) {
-			File keys = new File(confDir, HOST_KEY_FOLDER);
+			FileSource keys = confDir.getChild(HOST_KEY_FOLDER);
 			ownerOnlyFolder(keys);
 			server.setHostKeyProvider(HostKeyProviders.generated(keys));
 		}
 
 		String homesSetting = setting(server, PROPERTY_HOMES);
-		File homes = homesSetting != null ? new File(homesSetting) : defaultHomes();
+		FileSource homes = homesSetting != null ? SshFiles.local(homesSetting) : defaultHomes();
+		char sep = homes.getFileSourceFactory().getSeparatorChar();
 
 		IPublicKeyAuthenticator keys = AuthorizedKeysAuthenticator.forHomes(homes);
 		String caSetting = setting(server, PROPERTY_TRUSTED_USER_CA_KEYS);
-		File cas = caSetting != null ? new File(caSetting) : new File(new File(confDir, HOST_KEY_FOLDER), TRUSTED_USER_CA_KEYS_FILE);
+		FileSource cas = caSetting != null ? SshFiles.local(caSetting) : confDir.getChild(HOST_KEY_FOLDER).getChild(TRUSTED_USER_CA_KEYS_FILE);
 		if( cas.isFile() ) {
 			keys = keys.or(UserCertificateAuthenticator.fromFile(cas));
 			server.logInfo("User certificates signed by the CAs in "+cas);
@@ -127,17 +127,13 @@ final class ServiceSetup {
 			throw new IOException(SshServer.PROPERTY_PREFIX+"."+PROPERTY_TRUSTED_USER_CA_KEYS+": no such file: "+cas);
 		}
 		server.setPublicKeyAuthenticator(keys);
-		server.logInfo("authorized_keys in "+homes+File.separator+"USER"+File.separator+".ssh");
+		server.logInfo("authorized_keys in "+homes+sep+"USER"+sep+".ssh");
 		if( server.getAccessControl() == null ) {
 			server.logInfo("No access control list ("+SshServer.PROPERTY_PREFIX+".authenticationProvider): no password logins");
 		}
 
-		if( parleyFilesPresent() ) {
-			SftpSetup.add(server, homes);
-			server.logInfo("SFTP: each user in their userRoot, else "+homes+File.separator+"USER");
-		} else {
-			server.logInfo("No SFTP: parley-files is not on the class path");
-		}
+		SftpSetup.add(server, homes);
+		server.logInfo("SFTP: each user in their userRoot, else "+homes+sep+"USER");
 	}
 
 	private static String setting(SshServer server, String name) {
@@ -145,27 +141,26 @@ final class ServiceSetup {
 		return v == null || v.trim().isEmpty() ? null : v.trim();
 	}
 
-	private static boolean parleyFilesPresent() {
-		try {
-			Class.forName("us.bringardner.parley.files.FileSource", false, ServiceSetup.class.getClassLoader());
-			return true;
-		} catch (ClassNotFoundException | LinkageError e) {
-			return false;
-		}
-	}
-
 	/** Make the folder (rwx------ where the file system has POSIX permissions) */
-	private static void ownerOnlyFolder(File dir) throws IOException {
+	private void ownerOnlyFolder(FileSource dir) throws IOException {
 		if( dir.isDirectory() ) {
 			return;
 		}
 		if( !dir.mkdirs() && !dir.isDirectory() ) {
 			throw new IOException("Can't make the host key folder "+dir);
 		}
-		try {
-			Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString("rwx------"));
-		} catch (UnsupportedOperationException e) {
+		if( windows ) {
 			// (Windows: the folder's ACL comes from its parent, %ProgramData%\Parley)
+			return;
 		}
+		dir.setGroupReadable(false);
+		dir.setGroupWritable(false);
+		dir.setGroupExecutable(false);
+		dir.setOtherReadable(false);
+		dir.setOtherWritable(false);
+		dir.setOtherExecutable(false);
+		dir.setOwnerReadable(true);
+		dir.setOwnerWritable(true);
+		dir.setOwnerExecutable(true);
 	}
 }

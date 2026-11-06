@@ -25,16 +25,17 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
+import java.io.IOException;
 import java.util.regex.Pattern;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.files.fileproxy.FileProxyFactory;
 import us.bringardner.parley.net.server.IPrincipal;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.sftp.server.SftpSubsystemFactory;
 
 /**
- * SFTP for {@link ServiceSetup}: a class of its own, so parley-files (an optional dependency) is
- * only loaded when it is on the class path.
+ * SFTP for {@link ServiceSetup}: each user's root folder.
  *
  * @author Tony Bringardner
  */
@@ -52,9 +53,9 @@ final class SftpSetup {
 	 * Each user's root: the principal's userRoot parameter, else homes/USER; a user with neither
 	 * folder gets no SFTP
 	 */
-	static void add(SshServer server, File homes) {
+	static void add(SshServer server, FileSource homes) {
 		server.addSubsystem(new SftpSubsystemFactory(env -> {
-			File dir = rootOf(env.getPrincipal(), env.getUser(), homes);
+			FileSource dir = rootOf(env.getPrincipal(), env.getUser(), homes);
 			if( dir == null || !dir.isDirectory() ) {
 				server.logInfo("No SFTP for "+env.getUser()+": no folder "+dir);
 				return null;
@@ -64,14 +65,14 @@ final class SftpSetup {
 	}
 
 	/** null for a user name that could leave the homes folder */
-	static File rootOf(IPrincipal principal, String user, File homes) {
+	static FileSource rootOf(IPrincipal principal, String user, FileSource homes) throws IOException {
 		Object root = principal == null ? null : principal.getParameter(PARAMETER_USER_ROOT);
 		if( root != null && !root.toString().trim().isEmpty() ) {
-			return new File(root.toString().trim());
+			return SshFiles.local(root.toString().trim());
 		}
 		if( user == null || !SAFE_USER.matcher(user).matches() || user.contains("..") ) {
 			return null;
 		}
-		return new File(homes, user);
+		return homes.getChild(user);
 	}
 }

@@ -25,7 +25,6 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import java.io.File;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,6 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.ssh.SshFiles;
 
 /**
  * The settings of one {@link Ssh} run: its command line (OpenSSH's options), then the
@@ -758,8 +760,11 @@ final class SshOptions {
 		}
 	}
 
-	File file(String path) {
-		return new File(expand(path));
+	/**
+	 * @return a path from the command line or a config file (~ and %-tokens expanded), on the local file system
+	 */
+	FileSource file(String path) throws java.io.IOException {
+		return SshFiles.local(expand(path));
 	}
 
 	// ------------------------------------------------------------------ helpers

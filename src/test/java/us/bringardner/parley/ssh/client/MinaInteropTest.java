@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -219,16 +221,16 @@ public class MinaInteropTest {
 	public void knownHostsFile() throws Exception {
 		File f = new File(dir, "known_hosts");
 		try (SshClient c = client(null)) {
-			c.setHostKeyVerifier(new KnownHosts(f));
+			c.setHostKeyVerifier(new KnownHosts(fs(f)));
 			assertThrows(SshException.class, () -> c.connectAndWait("localhost", port), "unknown host, REJECT");
 
-			c.setHostKeyVerifier(new KnownHosts(f).setPolicy(KnownHosts.Policy.ACCEPT_NEW));
+			c.setHostKeyVerifier(new KnownHosts(fs(f)).setPolicy(KnownHosts.Policy.ACCEPT_NEW));
 			c.connectAndWait("localhost", port).close();
 
 			// Now known: trusted with the default policy
-			c.setHostKeyVerifier(new KnownHosts(f));
+			c.setHostKeyVerifier(new KnownHosts(fs(f)));
 			ClientSession s = connect(c);
-			assertEquals(KnownHosts.Result.TRUSTED, new KnownHosts(f).check("localhost", port, s.getServerHostKey()));
+			assertEquals(KnownHosts.Result.TRUSTED, new KnownHosts(fs(f)).check("localhost", port, s.getServerHostKey()));
 			s.close();
 		}
 	}

@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,7 +141,7 @@ public class ServerTest {
 		File keys = new File(dir, "authorized_keys");
 		Files.write(keys.toPath(), (SshPublicKeys.toOpenSsh(alicesKey.getPublic())+" alice@test\n"
 				+"no-such-option,command=\"/bin/false\" "+SshPublicKeys.toOpenSsh(strangersKey.getPublic())+"\n").getBytes(StandardCharsets.UTF_8));
-		s.setPublicKeyAuthenticator(new AuthorizedKeysAuthenticator(user -> "alice".equals(user) ? keys : null));
+		s.setPublicKeyAuthenticator(new AuthorizedKeysAuthenticator(user -> "alice".equals(user) ? fs(keys) : null));
 		s.setCommandFactory((line, env) -> command(line));
 		s.setShellFactory(env -> shell());
 		s.setLoginFailureDelay(50);
@@ -498,10 +500,10 @@ public class ServerTest {
 	@Test
 	public void hostKeysMadeOnceAndKept() throws Exception {
 		File keyDir = new File(dir, "hostkeys");
-		List<KeyPair> first = HostKeyProviders.generated(keyDir).getHostKeys();
+		List<KeyPair> first = HostKeyProviders.generated(fs(keyDir)).getHostKeys();
 		assertTrue(new File(keyDir, "ssh_host_ecdsa_key").isFile());
 		assertTrue(new File(keyDir, "ssh_host_rsa_key.pub").isFile());
-		List<KeyPair> again = HostKeyProviders.generated(keyDir).getHostKeys();
+		List<KeyPair> again = HostKeyProviders.generated(fs(keyDir)).getHostKeys();
 		for (int i = 0; i < first.size(); i++) {
 			assertArrayEquals(SshPublicKeys.encode(first.get(i).getPublic()), SshPublicKeys.encode(again.get(i).getPublic()));
 		}

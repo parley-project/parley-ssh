@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -73,8 +75,8 @@ public class OpenSshCertificateIT {
 
 		// Our server: the host key and its certificate from files, users through the CA
 		server = new SshServer(0);
-		server.setHostKeyProvider(HostKeyProviders.fromFiles(f("host")));
-		server.setPublicKeyAuthenticator(UserCertificateAuthenticator.fromFile(f("ca.pub")));
+		server.setHostKeyProvider(HostKeyProviders.fromFiles(fs(f("host"))));
+		server.setPublicKeyAuthenticator(UserCertificateAuthenticator.fromFile(fs(f("ca.pub"))));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
 		server.setLoginFailureDelay(0);
 		server.startAndWait(5000);
@@ -157,7 +159,7 @@ public class OpenSshCertificateIT {
 		Files.write(keys.toPath(), ("cert-authority,principals=\"alice\",command=\"echo via-line\" "
 				+new String(Files.readAllBytes(f("ca.pub").toPath()), StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 		IPublicKeyAuthenticator old = server.getPublicKeyAuthenticator();
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(keys));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		try {
 			String[] r = ssh("user_ed25519", "whoami");
 			assertEquals("0", r[0], r[1]);
@@ -210,7 +212,7 @@ public class OpenSshCertificateIT {
 				assertNotNull(s.getHostCertificate(), "sshd's host certificate was used");
 				assertEquals("test-host", s.getHostCertificate().getKeyId());
 				s.authenticateAndWait(System.getProperty("user.name"),
-						new PublicKeyAuth().addCertificate(SshKeyLoader.load(f(key), null), SshCertificate.load(f(key+"-cert.pub"))));
+						new PublicKeyAuth().addCertificate(SshKeyLoader.load(fs(f(key)), null), SshCertificate.load(fs(f(key+"-cert.pub")))));
 				assertEquals("it-works\n", s.exec("echo it-works", null, 30000).getStdoutText(), key);
 				s.close();
 			}

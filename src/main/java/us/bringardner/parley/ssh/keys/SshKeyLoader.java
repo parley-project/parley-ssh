@@ -25,11 +25,9 @@
  */
 package us.bringardner.parley.ssh.keys;
 
-import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyStore;
@@ -48,8 +46,10 @@ import javax.crypto.spec.SecretKeySpec;
 
 import us.bringardner.parley.core.util.Pem;
 import us.bringardner.parley.core.util.PrivateKeys;
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.Ed25519;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -79,8 +79,8 @@ public final class SshKeyLoader {
 	 * @param file a private key file
 	 * @param passphrase for an encrypted key, null if it isn't
 	 */
-	public static KeyPair load(File file, char[] passphrase) throws IOException {
-		return parse(new String(Files.readAllBytes(file.toPath()), StandardCharsets.US_ASCII), passphrase);
+	public static KeyPair load(FileSource file, char[] passphrase) throws IOException {
+		return parse(new String(SshFiles.readAllBytes(file), StandardCharsets.US_ASCII), passphrase);
 	}
 
 	/**
@@ -132,8 +132,8 @@ public final class SshKeyLoader {
 	/**
 	 * @return the public key of an "type base64 comment" file (id_rsa.pub)
 	 */
-	public static PublicKey loadPublic(File file) throws IOException {
-		return SshPublicKeys.fromOpenSsh(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+	public static PublicKey loadPublic(FileSource file) throws IOException {
+		return SshPublicKeys.fromOpenSsh(new String(SshFiles.readAllBytes(file), StandardCharsets.UTF_8));
 	}
 
 	/**
@@ -153,13 +153,13 @@ public final class SshKeyLoader {
 	 * unsupported are skipped.
 	 */
 	public static List<KeyPair> defaultIdentities() {
-		File dir = new File(System.getProperty("user.home"), ".ssh");
 		List<KeyPair> ret = new ArrayList<KeyPair>();
 		for (String name : new String[] {"id_ed25519", "id_ecdsa", "id_rsa"}) {
-			File f = new File(dir, name);
 			try {
-				if( f.canRead() ) {
-					String text = new String(Files.readAllBytes(f.toPath()), StandardCharsets.US_ASCII);
+				FileSource f = SshFiles.userSshDir().getChild(name);
+				// (A file that can't be read fails the read and is skipped)
+				if( f.isFile() ) {
+					String text = new String(SshFiles.readAllBytes(f), StandardCharsets.US_ASCII);
 					if( !isEncrypted(text) ) {
 						ret.add(parse(text, null));
 					}

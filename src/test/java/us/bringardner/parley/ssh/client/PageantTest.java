@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -31,7 +33,7 @@ public class PageantTest {
 	private String agentOf(String config) throws Exception {
 		File f = new File(dir, "pageant.conf");
 		Files.write(f.toPath(), config.getBytes(StandardCharsets.UTF_8));
-		return SshAgent.identityAgent(f);
+		return SshAgent.identityAgent(fs(f));
 	}
 
 	@Test

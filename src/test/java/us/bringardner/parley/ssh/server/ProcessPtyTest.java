@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -141,7 +143,7 @@ public class ProcessPtyTest {
 		File authorized = new File(dir, "authorized_keys");
 		Files.copy(new File(key.getPath()+".pub").toPath(), authorized.toPath());
 		IPublicKeyAuthenticator old = server.getPublicKeyAuthenticator();
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(authorized));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(authorized)));
 		try {
 			Process p = new ProcessBuilder("ssh", "-F", "/dev/null", "-tt", "-p", ""+server.getLocalPort(), "-i", key.getPath(),
 					"-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",

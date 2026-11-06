@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -105,7 +107,7 @@ public class AgentForwardingTest {
 				+new String(Files.readAllBytes(new File(key.getPath()+".pub").toPath()), StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(keys));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		ProcessCommandFactory os = new ProcessCommandFactory(dir);
 		// "agent-keys" lists the forwarded agent's keys from Java; anything else runs in the OS
 		server.setCommandFactory((line, env) -> line.equals("agent-keys") ? new AbstractCommand() {
@@ -127,7 +129,7 @@ public class AgentForwardingTest {
 		client = new SshClient();
 		client.setHostKeyVerifier(HostKeyVerifiers.acceptAll());
 		ClientSession s = client.connectAndWait("localhost", server.getLocalPort());
-		s.authenticateAndWait("alice", new PublicKeyAuth(SshKeyLoader.load(key, null)));
+		s.authenticateAndWait("alice", new PublicKeyAuth(SshKeyLoader.load(fs(key), null)));
 		if( forward ) {
 			s.setAgentForwarding(socket);
 		}
@@ -234,7 +236,7 @@ public class AgentForwardingTest {
 			client = new SshClient();
 			client.setHostKeyVerifier(HostKeyVerifiers.acceptAll());
 			ClientSession s = client.connectAndWait("127.0.0.1", port);
-			s.authenticateAndWait(System.getProperty("user.name"), new PublicKeyAuth(SshKeyLoader.load(key, null)));
+			s.authenticateAndWait(System.getProperty("user.name"), new PublicKeyAuth(SshKeyLoader.load(fs(key), null)));
 			s.setAgentForwarding(socket);
 			String[] r = exec(s, true, "ssh-add -l");
 			assertEquals("true", r[2]);

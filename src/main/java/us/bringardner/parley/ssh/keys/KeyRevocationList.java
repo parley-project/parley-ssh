@@ -25,11 +25,9 @@
  */
 package us.bringardner.parley.ssh.keys;
 
-import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -39,8 +37,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -54,7 +54,7 @@ import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
  * when its key or its CA's key is. KRL signatures are not checked (as OpenSSH doesn't
  * require them); the file must be protected like any server configuration.
  * <p>
- * A list made with {@link #load(File)} reads its file again when it changes. Thread safe.
+ * A list made with {@link #load(FileSource)} reads its file again when it changes. Thread safe.
  *
  * @author Tony Bringardner
  */
@@ -115,12 +115,12 @@ public final class KeyRevocationList {
 		final Set<String> sha256 = new HashSet<String>();
 	}
 
-	private final File file;
+	private final FileSource file;
 	private volatile State state;
 	private volatile long modified;
 	private volatile long size;
 
-	private KeyRevocationList(File file, State state) {
+	private KeyRevocationList(FileSource file, State state) throws IOException {
 		this.file = file;
 		this.state = state;
 		if( file != null ) {
@@ -133,8 +133,8 @@ public final class KeyRevocationList {
 	 * @param file a KRL or a list of public keys; read again when it changes
 	 * @throws IOException if it can't be read or is malformed
 	 */
-	public static KeyRevocationList load(File file) throws IOException {
-		return new KeyRevocationList(file, parse(Files.readAllBytes(file.toPath())));
+	public static KeyRevocationList load(FileSource file) throws IOException {
+		return new KeyRevocationList(file, parse(SshFiles.readAllBytes(file)));
 	}
 
 	/**
@@ -144,15 +144,26 @@ public final class KeyRevocationList {
 		return new KeyRevocationList(null, parse(data));
 	}
 
+	/**
+	 * @return true if the file's time or size isn't what was read last (or can't be had)
+	 */
+	private boolean changed(FileSource f) {
+		try {
+			return f.lastModified() != modified || f.length() != size;
+		} catch (IOException e) {
+			return true;
+		}
+	}
+
 	private State current() {
-		File f = file;
-		if( f != null && (f.lastModified() != modified || f.length() != size) ) {
+		FileSource f = file;
+		if( f != null && changed(f) ) {
 			synchronized (this) {
-				if( f.lastModified() != modified || f.length() != size ) {
+				if( changed(f) ) {
 					try {
 						long m = f.lastModified();
 						long s = f.length();
-						state = parse(Files.readAllBytes(f.toPath()));
+						state = parse(SshFiles.readAllBytes(f));
 						modified = m;
 						size = s;
 					} catch (IOException e) {

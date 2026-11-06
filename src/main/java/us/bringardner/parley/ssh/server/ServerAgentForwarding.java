@@ -25,12 +25,12 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.concurrent.TimeUnit;
 
@@ -164,7 +164,7 @@ final class ServerAgentForwarding extends BaseObject {
 				// closed
 			}
 			try {
-				Files.deleteIfExists(new File(socketPath).toPath());
+				Files.deleteIfExists(Paths.get(socketPath));
 				Files.deleteIfExists(dir);
 			} catch (IOException e) {
 				logDebug("Can't remove "+dir+": "+e.getMessage());

@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,7 +63,7 @@ public class OpenSshClientIT {
 		File authorized = new File(dir, "authorized_keys");
 		java.nio.file.Files.write(authorized.toPath(), (new String(java.nio.file.Files.readAllBytes(new File(key.getPath()+".pub").toPath()), StandardCharsets.UTF_8)
 				+new String(java.nio.file.Files.readAllBytes(new File(edKey.getPath()+".pub").toPath()), StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(authorized));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(authorized)));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
 		server.setForwardingFilter(ForwardingFilters.localOnly());
 		sftpRoot = new File(dir, "sftp-root");

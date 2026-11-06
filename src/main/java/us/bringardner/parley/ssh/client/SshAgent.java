@@ -38,7 +38,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshBuffer;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.connection.UnixSockets;
 import us.bringardner.parley.ssh.SshException;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
@@ -218,8 +220,8 @@ public class SshAgent implements Closeable {
 	 *
 	 * @return the IdentityAgent's path, or null if the file names none
 	 */
-	public static String identityAgent(File openSshConfig) throws IOException {
-		for (String line : java.nio.file.Files.readAllLines(openSshConfig.toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+	public static String identityAgent(FileSource openSshConfig) throws IOException {
+		for (String line : SshFiles.readAllLines(openSshConfig)) {
 			String l = line.trim();
 			if( l.regionMatches(true, 0, "IdentityAgent", 0, 13) && l.length() > 13 && (Character.isWhitespace(l.charAt(13)) || l.charAt(13) == '=') ) {
 				String v = l.substring(14).trim();

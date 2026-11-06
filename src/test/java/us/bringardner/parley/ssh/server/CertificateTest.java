@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -168,7 +170,7 @@ public class CertificateTest {
 			assertTrue(run(dir, "ssh-keygen", "-q", "-t", type, "-N", "", "-f", "user_"+type));
 			assertTrue(run(dir, "ssh-keygen", "-q", "-s", "ca", "-I", "kid-"+type, "-n", "alice,bob", "-V", "-5m:+1h",
 					"-O", "force-command=echo forced", "-O", "source-address=127.0.0.1/32", "user_"+type+".pub"));
-			SshCertificate c = SshCertificate.load(new File(dir, "user_"+type+"-cert.pub"));
+			SshCertificate c = SshCertificate.load(fs(new File(dir, "user_"+type+"-cert.pub")));
 			assertEquals("kid-"+type, c.getKeyId());
 			assertEquals(Arrays.asList("alice", "bob"), c.getPrincipals());
 			assertEquals("echo forced", c.getCriticalOptions().get(SshCertificate.FORCE_COMMAND));
@@ -176,7 +178,7 @@ public class CertificateTest {
 			assertTrue(c.hasExtension(SshCertificate.PERMIT_PTY), "ssh-keygen's default extensions");
 			assertTrue(c.isSignatureValid());
 			assertNull(c.check(SshCertificate.USER, "bob", NOW));
-			assertArrayEquals(SshPublicKeys.encode(SshKeyLoader.loadPublic(new File(dir, "user_"+type+".pub"))), c.getPublicKeyBlob());
+			assertArrayEquals(SshPublicKeys.encode(SshKeyLoader.loadPublic(fs(new File(dir, "user_"+type+".pub")))), c.getPublicKeyBlob());
 		}
 		// Ours, with an RSA CA (rsa-sha2-512 signature), as ssh-keygen -L reads it
 		KeyPair ca = rsa();
@@ -282,7 +284,7 @@ public class CertificateTest {
 		Files.write(keys.toPath(), (SshPublicKeys.toOpenSsh(plainKey.getPublic())+"\n").getBytes(StandardCharsets.UTF_8));
 		UserCertificateAuthenticator cas = new UserCertificateAuthenticator(Collections.singletonList(ca.getPublic()))
 				.setPrincipals(user -> "alice".equals(user) ? Arrays.asList("ops", "alice-admin") : null);
-		startServer(HostKeyProviders.ephemeral(), AuthorizedKeysAuthenticator.forFile(keys).or(cas));
+		startServer(HostKeyProviders.ephemeral(), AuthorizedKeysAuthenticator.forFile(fs(keys)).or(cas));
 		login(alice, user(alice, ca, null, null, "ops")).close();
 		refused(alice, user(alice, ca, null, null, "alice"), "alice is not one of alice's principals here");
 		ClientSession s = connect();

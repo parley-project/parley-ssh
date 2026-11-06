@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,7 +54,7 @@ public class TestKnownSettings {
 		SshServer server = new SshServer(ServiceSetup.DEFAULT_PORT);
 		SshClient client = new SshClient();
 		try {
-			new ServiceSetup(conf, false, false).configure(server);
+			new ServiceSetup(fs(conf), false, false).configure(server);
 			server.setPasswordAuthenticator((user, pw, ctx) -> "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
 			server.startAndWait(5000);
 			client.setHostKeyVerifier(HostKeyVerifiers.acceptAll());

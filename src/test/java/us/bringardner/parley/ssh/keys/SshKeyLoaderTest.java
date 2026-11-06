@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.keys;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -66,7 +68,7 @@ public class SshKeyLoaderTest {
 	}
 
 	private static void check(File f, KeyPair kp) throws Exception {
-		PublicKey pub = SshKeyLoader.loadPublic(new File(f.getPath()+".pub"));
+		PublicKey pub = SshKeyLoader.loadPublic(fs(new File(f.getPath()+".pub")));
 		assertArrayEquals(SshPublicKeys.encode(pub), SshPublicKeys.encode(kp.getPublic()), f.getName()+": public key");
 		String type = SshPublicKeys.keyType(pub);
 		ISignatureAlgorithm sig = SshAlgorithms.findSignature(type.equals("ssh-rsa") ? "rsa-sha2-256" : type);
@@ -100,19 +102,19 @@ public class SshKeyLoaderTest {
 					args.add("-o");
 				}
 				File plain = keygen(name, "", args.toArray(new String[0]));
-				check(plain, SshKeyLoader.load(plain, null));
+				check(plain, SshKeyLoader.load(fs(plain), null));
 				assertFalse(SshKeyLoader.isEncrypted(new String(Files.readAllBytes(plain.toPath()), StandardCharsets.US_ASCII)));
 
 				File enc = keygen(name+"e", "pass phrase", args.toArray(new String[0]));
 				String text = new String(Files.readAllBytes(enc.toPath()), StandardCharsets.US_ASCII);
 				assertTrue(SshKeyLoader.isEncrypted(text), name+" "+format);
 				// OpenSSH's own format is encrypted with bcrypt_pbkdf and aes256-ctr
-				check(enc, SshKeyLoader.load(enc, "pass phrase".toCharArray()));
-				SshException wrong = assertThrows(SshException.class, () -> SshKeyLoader.load(enc, "wrong".toCharArray()));
+				check(enc, SshKeyLoader.load(fs(enc), "pass phrase".toCharArray()));
+				SshException wrong = assertThrows(SshException.class, () -> SshKeyLoader.load(fs(enc), "wrong".toCharArray()));
 				if( format == null ) {
 					assertEquals("Wrong passphrase", wrong.getMessage());
 				}
-				assertThrows(SshException.class, () -> SshKeyLoader.load(enc, null));
+				assertThrows(SshException.class, () -> SshKeyLoader.load(fs(enc), null));
 			}
 		}
 	}
@@ -155,8 +157,8 @@ public class SshKeyLoaderTest {
 		boolean ed = us.bringardner.parley.ssh.algorithms.Ed25519.isEd25519(kp.getPublic());
 		for (boolean openSsh : ed ? new boolean[] {true} : new boolean[] {true, false}) {
 			File f = new File(dir, "w"+System.nanoTime());
-			us.bringardner.parley.ssh.keys.SshKeyWriter.write(kp, f, "round trip", openSsh);
-			KeyPair back = SshKeyLoader.load(f, null);
+			us.bringardner.parley.ssh.keys.SshKeyWriter.write(kp, fs(f), "round trip", openSsh);
+			KeyPair back = SshKeyLoader.load(fs(f), null);
 			assertArrayEquals(SshPublicKeys.encode(kp.getPublic()), SshPublicKeys.encode(back.getPublic()));
 			check(f, back);
 			if( haveKeygen() ) {
@@ -174,7 +176,7 @@ public class SshKeyLoaderTest {
 		Assumptions.assumeTrue(haveKeygen(), "ssh-keygen not found");
 		for (String cipher : new String[] {"aes128-ctr", "aes256-cbc"}) {
 			File f = keygen("c-"+cipher, "secret", "-t", "ecdsa", "-Z", cipher, "-a", "4");
-			check(f, SshKeyLoader.load(f, "secret".toCharArray()));
+			check(f, SshKeyLoader.load(fs(f), "secret".toCharArray()));
 		}
 	}
 }

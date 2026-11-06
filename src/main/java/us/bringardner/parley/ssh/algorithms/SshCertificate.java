@@ -25,10 +25,8 @@
  */
 package us.bringardner.parley.ssh.algorithms;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.PublicKey;
@@ -42,8 +40,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 
 /**
  * An OpenSSH certificate (PROTOCOL.certkeys): a public key, signed by a certificate authority
@@ -53,7 +53,7 @@ import us.bringardner.parley.ssh.SshException;
  * certificate, without listing every key.
  * <p>
  * Made by {@code ssh-keygen -s ca_key ...} or {@link #sign}; read from the "-cert.pub" file
- * with {@link #load(File)} or from a key blob with {@link #decode(byte[])}.
+ * with {@link #load(FileSource)} or from a key blob with {@link #decode(byte[])}.
  * <p>
  * {@link #check(int, String, long)} does the checks every use needs (signature, type,
  * validity, principal); who trusts which CA, and the critical options, are up to the user of
@@ -230,8 +230,8 @@ public final class SshCertificate {
 	/**
 	 * @param file a "-cert.pub" file, e.g. ~/.ssh/id_ed25519-cert.pub
 	 */
-	public static SshCertificate load(File file) throws IOException {
-		return fromOpenSsh(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+	public static SshCertificate load(FileSource file) throws IOException {
+		return fromOpenSsh(new String(SshFiles.readAllBytes(file), StandardCharsets.UTF_8));
 	}
 
 	private static List<String> strings(byte[] packed) throws SshException {

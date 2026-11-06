@@ -25,10 +25,8 @@
  */
 package us.bringardner.parley.ssh.keys;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -40,7 +38,10 @@ import java.util.Arrays;
 import java.util.Base64;
 
 import us.bringardner.parley.core.util.PrivateKeys;
+import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.files.FileSourceFactory;
 import us.bringardner.parley.ssh.SshBuffer;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.Ed25519;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -106,7 +107,7 @@ public final class SshKeyWriter {
 	 * Write the private key (readable by the owner only where the file system allows) and
 	 * file.pub with the public key.
 	 */
-	public static void write(KeyPair pair, File file, String comment) throws IOException {
+	public static void write(KeyPair pair, FileSource file, String comment) throws IOException {
 		// PKCS#8 has no room for an Ed25519 public key: OpenSSH's format for those
 		write(pair, file, comment, Ed25519.isEd25519(pair.getPublic()));
 	}
@@ -114,15 +115,39 @@ public final class SshKeyWriter {
 	/**
 	 * @param openSshFormat true for OpenSSH's format, false for PKCS#8 PEM
 	 */
-	public static void write(KeyPair pair, File file, String comment, boolean openSshFormat) throws IOException {
-		File dir = file.getAbsoluteFile().getParentFile();
-		if( dir != null && !dir.exists() && !dir.mkdirs() ) {
-			throw new IOException("Can't create "+dir);
+	public static void write(KeyPair pair, FileSource file, String comment, boolean openSshFormat) throws IOException {
+		SshFiles.makeParentFolder(file);
+		if( file.exists() && !file.delete() ) {
+			throw new IOException("Can't replace "+file);
 		}
-		// Created empty with owner-only permissions first, so the key is never readable by others
-		Files.deleteIfExists(file.toPath());
-		PrivateKeys.writePrivateFile(file, openSshFormat ? toOpenSsh(pair, comment) : toPkcs8Pem(pair.getPrivate()));
+		writePrivate(file, openSshFormat ? toOpenSsh(pair, comment) : toPkcs8Pem(pair.getPrivate()));
 		String pub = SshPublicKeys.toOpenSsh(pair.getPublic())+(comment == null ? "" : " "+comment)+"\n";
-		Files.write(new File(file.getPath()+".pub").toPath(), pub.getBytes(StandardCharsets.US_ASCII));
+		SshFiles.write(SshFiles.withSuffix(file, ".pub"), pub.getBytes(StandardCharsets.US_ASCII));
+	}
+
+	/**
+	 * Write a new private key file that only its owner can read.
+	 * <p>
+	 * On the local file system the file is created with owner-only permissions (POSIX, or on
+	 * Windows its ACL cut down to its owner) before the key goes in, so the key is never
+	 * readable by others: FileSource has no way to create a file with its permissions in one
+	 * step, so this uses PrivateKeys and the file's local path. Elsewhere the file is created
+	 * empty, its permissions set, and then the key written.
+	 */
+	private static void writePrivate(FileSource file, String text) throws IOException {
+		if( file.getFileSourceFactory().isSameFileSystem(FileSourceFactory.fileProxyFactory) ) {
+			PrivateKeys.writePrivateFile(new java.io.File(file.getAbsolutePath()), text);
+			return;
+		}
+		if( !file.createNewFile() ) {
+			throw new IOException("Can't create "+file);
+		}
+		file.setGroupReadable(false);
+		file.setGroupWritable(false);
+		file.setOtherReadable(false);
+		file.setOtherWritable(false);
+		file.setOwnerReadable(true);
+		file.setOwnerWritable(true);
+		SshFiles.write(file, text.getBytes(StandardCharsets.US_ASCII));
 	}
 }

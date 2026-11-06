@@ -25,7 +25,6 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.security.KeyPair;
@@ -33,6 +32,7 @@ import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.List;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
@@ -143,10 +143,10 @@ final class PromptedAuth {
 		private static final int PASSPHRASE_ATTEMPTS = 3;
 
 		private final CliTerminal terminal;
-		private final File file;
+		private final FileSource file;
 		private final String text;
 		private final PublicKey publicKey;
-		private final List<File> certificates;
+		private final List<FileSource> certificates;
 		/** while asking the server about publicKey */
 		private boolean probing;
 		private PublicKeyAuth delegate;
@@ -156,7 +156,7 @@ final class PromptedAuth {
 		 * @param publicKey from the .pub file, null if there is none
 		 * @param certificates certificate files for the key (those that are there)
 		 */
-		EncryptedKey(CliTerminal terminal, File file, String text, PublicKey publicKey, List<File> certificates) {
+		EncryptedKey(CliTerminal terminal, FileSource file, String text, PublicKey publicKey, List<FileSource> certificates) {
 			this.terminal = terminal;
 			this.file = file;
 			this.text = text;
@@ -191,7 +191,7 @@ final class PromptedAuth {
 				return false;
 			}
 			delegate = new PublicKeyAuth(key);
-			for (File c : certificates) {
+			for (FileSource c : certificates) {
 				try {
 					delegate.addCertificate(key, SshCertificate.load(c));
 				} catch (IOException | IllegalArgumentException e) {

@@ -25,12 +25,10 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.PublicKey;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -48,10 +46,12 @@ import java.util.regex.Pattern;
 
 import us.bringardner.parley.core.BaseObject;
 import us.bringardner.parley.core.util.AddressMatcher;
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.net.server.IAccessControlList;
 import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.net.server.ImmutablePrincipal;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -111,27 +111,34 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 		}
 	}
 
-	private final Function<String, File> files;
+	private final Function<String, FileSource> files;
 	private final Map<String, Cached> cache = new ConcurrentHashMap<String, Cached>();
 
 	/**
-	 * @param files the authorized_keys file of a user (null: the user has none)
+	 * @param files the authorized_keys file of a user (null: the user has none). It may throw
+	 *  UncheckedIOException, which authentication sees as the IOException inside it.
 	 */
-	public AuthorizedKeysAuthenticator(Function<String, File> files) {
+	public AuthorizedKeysAuthenticator(Function<String, FileSource> files) {
 		this.files = files;
 	}
 
 	/**
 	 * Each user's file is home/user/.ssh/authorized_keys.
 	 */
-	public static AuthorizedKeysAuthenticator forHomes(File home) {
-		return new AuthorizedKeysAuthenticator(user -> new File(home, user+File.separator+".ssh"+File.separator+"authorized_keys"));
+	public static AuthorizedKeysAuthenticator forHomes(FileSource home) {
+		return new AuthorizedKeysAuthenticator(user -> {
+			try {
+				return home.getChild(user).getChild(".ssh").getChild("authorized_keys");
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
 	}
 
 	/**
 	 * One file for every user name.
 	 */
-	public static AuthorizedKeysAuthenticator forFile(File file) {
+	public static AuthorizedKeysAuthenticator forFile(FileSource file) {
 		return new AuthorizedKeysAuthenticator(user -> file);
 	}
 
@@ -139,7 +146,12 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 		if( user == null || !SAFE_USER.matcher(user).matches() || user.contains("..") ) {
 			return Collections.emptyList();
 		}
-		File f = files.apply(user);
+		FileSource f;
+		try {
+			f = files.apply(user);
+		} catch (UncheckedIOException e) {
+			throw e.getCause();
+		}
 		if( f == null || !f.isFile() ) {
 			return Collections.emptyList();
 		}
@@ -262,7 +274,7 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 		return new SshPrincipal(user);
 	}
 
-	private List<Entry> entries(File f) throws IOException {
+	private List<Entry> entries(FileSource f) throws IOException {
 		String path = f.getCanonicalPath();
 		long modified = f.lastModified();
 		long size = f.length();
@@ -270,7 +282,7 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 		if( c != null && c.modified == modified && c.size == size ) {
 			return c.entries;
 		}
-		List<Entry> entries = parse(Files.readAllLines(f.toPath(), StandardCharsets.UTF_8), path);
+		List<Entry> entries = parse(SshFiles.readAllLines(f), path);
 		cache.put(path, new Cached(modified, size, entries));
 		return entries;
 	}

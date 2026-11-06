@@ -25,7 +25,6 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
@@ -37,7 +36,9 @@ import java.util.Collections;
 import java.util.List;
 
 import us.bringardner.parley.core.SecureBaseObject;
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.keys.SshKeyLoader;
 import us.bringardner.parley.ssh.keys.SshKeyWriter;
@@ -72,13 +73,13 @@ public final class HostKeyProviders {
 	 * Private key files (PEM, PKCS#8 or OpenSSH, unencrypted), e.g. /etc/ssh/ssh_host_ecdsa_key,
 	 * with the host certificate of each that has one ("key-cert.pub", as ssh-keygen -s -h writes).
 	 */
-	public static IHostKeyProvider fromFiles(File... files) {
-		List<File> list = Arrays.asList(files.clone());
+	public static IHostKeyProvider fromFiles(FileSource... files) {
+		List<FileSource> list = Arrays.asList(files.clone());
 		return new IHostKeyProvider() {
 			@Override
 			public List<KeyPair> getHostKeys() throws IOException {
 				List<KeyPair> ret = new ArrayList<KeyPair>();
-				for (File f : list) {
+				for (FileSource f : list) {
 					ret.add(SshKeyLoader.load(f, null));
 				}
 				return ret;
@@ -114,10 +115,10 @@ public final class HostKeyProviders {
 	/**
 	 * @return the "-cert.pub" files next to the key files
 	 */
-	private static List<SshCertificate> certificates(List<File> keyFiles) throws IOException {
+	private static List<SshCertificate> certificates(List<FileSource> keyFiles) throws IOException {
 		List<SshCertificate> ret = new ArrayList<SshCertificate>();
-		for (File f : keyFiles) {
-			File cert = new File(f.getPath()+"-cert.pub");
+		for (FileSource f : keyFiles) {
+			FileSource cert = SshFiles.withSuffix(f, "-cert.pub");
 			if( cert.isFile() ) {
 				ret.add(SshCertificate.load(cert));
 			}
@@ -130,20 +131,25 @@ public final class HostKeyProviders {
 	 * ssh_host_ecdsa_key (P-256) and ssh_host_rsa_key (3072 bits), with their .pub files.
 	 * Later starts read the same keys, so clients that trust them keep trusting the server.
 	 */
-	public static IHostKeyProvider generated(File dir) {
+	public static IHostKeyProvider generated(FileSource dir) {
 		List<String> names = new ArrayList<String>(Arrays.asList("ssh_host_ecdsa_key", "ssh_host_rsa_key"));
 		if( us.bringardner.parley.ssh.algorithms.Ed25519.isSupported() ) {
 			names.add(0, "ssh_host_ed25519_key");
 		}
-		List<File> files = new ArrayList<File>();
-		for (String name : names) {
-			files.add(new File(dir, name));
-		}
 		return new IHostKeyProvider() {
+			/** The key files in dir, by name */
+			private List<FileSource> files() throws IOException {
+				List<FileSource> ret = new ArrayList<FileSource>();
+				for (String name : names) {
+					ret.add(dir.getChild(name));
+				}
+				return ret;
+			}
+
 			@Override
 			public List<KeyPair> getHostKeys() throws IOException {
 				List<KeyPair> ret = new ArrayList<KeyPair>();
-				for (File f : files) {
+				for (FileSource f : files()) {
 					if( !f.exists() ) {
 						String name = f.getName();
 						KeyPair kp = name.contains("ed25519") ? ed25519() : name.contains("ecdsa") ? ec() : rsa();
@@ -157,7 +163,7 @@ public final class HostKeyProviders {
 			/** ssh_host_*_key-cert.pub, when a CA has signed one */
 			@Override
 			public List<SshCertificate> getHostCertificates() throws IOException {
-				return certificates(files);
+				return certificates(files());
 			}
 		};
 	}

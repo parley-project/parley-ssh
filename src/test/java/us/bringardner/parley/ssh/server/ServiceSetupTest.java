@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,7 +96,7 @@ public class ServiceSetupTest {
 		SshServer s = new SshServer(ServiceSetup.DEFAULT_PORT);
 		s.setName("service-test");
 		server = s;
-		new ServiceSetup(conf, false, false).configure(s);
+		new ServiceSetup(fs(conf), false, false).configure(s);
 		s.startAndWait(10000);
 		return s;
 	}
@@ -203,22 +205,22 @@ public class ServiceSetupTest {
 	}
 
 	@Test
-	public void sftpRoot() {
+	public void sftpRoot() throws Exception {
 		File h = new File("/home");
 		SshPrincipal p = new SshPrincipal("frank");
-		assertEquals(new File(h, "frank"), SftpSetup.rootOf(p, "frank", h));
+		assertEquals(fs(new File(h, "frank")), SftpSetup.rootOf(p, "frank", fs(h)));
 		p.setParameter(SftpSetup.PARAMETER_USER_ROOT, "/srv/frank");
-		assertEquals(new File("/srv/frank"), SftpSetup.rootOf(p, "frank", h), "the access control list's userRoot, as FTP");
-		assertNull(SftpSetup.rootOf(null, "..", h));
-		assertNull(SftpSetup.rootOf(null, "a/b", h));
-		assertNull(SftpSetup.rootOf(null, "-x", h));
+		assertEquals(fs(new File("/srv/frank")), SftpSetup.rootOf(p, "frank", fs(h)), "the access control list's userRoot, as FTP");
+		assertNull(SftpSetup.rootOf(null, "..", fs(h)));
+		assertNull(SftpSetup.rootOf(null, "a/b", fs(h)));
+		assertNull(SftpSetup.rootOf(null, "-x", fs(h)));
 	}
 
 	@Test
-	public void defaultHomes() {
-		assertEquals(new File("/home"), new ServiceSetup(conf, false, false).defaultHomes());
-		assertEquals(new File("/Users"), new ServiceSetup(conf, false, true).defaultHomes());
-		assertTrue(new ServiceSetup(conf, true, false).defaultHomes().getPath().endsWith("\\Users"));
+	public void defaultHomes() throws Exception {
+		assertEquals(fs(new File("/home")), new ServiceSetup(fs(conf), false, false).defaultHomes());
+		assertEquals(fs(new File("/Users")), new ServiceSetup(fs(conf), false, true).defaultHomes());
+		assertTrue(new ServiceSetup(fs(conf), true, false).defaultHomes().getPath().endsWith("\\Users"));
 	}
 
 	// ------------------------------------------------------------------ the process

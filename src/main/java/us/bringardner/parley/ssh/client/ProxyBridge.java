@@ -26,7 +26,6 @@
 package us.bringardner.parley.ssh.client;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -37,6 +36,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.IntSupplier;
 
+import us.bringardner.parley.files.FileSourceFactory;
 import us.bringardner.parley.ssh.connection.ForwardingChannel;
 
 /**
@@ -187,7 +187,7 @@ final class ProxyBridge implements Closeable {
 		ProxyBridge[] self = new ProxyBridge[1];
 		self[0] = new ProxyBridge(s -> {
 			ProcessBuilder pb;
-			if( File.separatorChar == '\\' ) {
+			if( FileSourceFactory.isWindows() ) {
 				pb = new ProcessBuilder("cmd.exe", "/c", command);
 			} else {
 				String shell = System.getenv("SHELL");

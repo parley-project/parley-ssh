@@ -25,13 +25,14 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.List;
 
+import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -64,10 +65,10 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 	 * @param mode yes, no, ask or accept-new
 	 * @param batch never ask (an unknown host is refused if mode is "ask")
 	 */
-	PromptingHostKeyVerifier(List<File> user, List<File> global, boolean hash, String mode, CliTerminal terminal, boolean batch, boolean quiet) throws IOException {
+	PromptingHostKeyVerifier(List<FileSource> user, List<FileSource> global, boolean hash, String mode, CliTerminal terminal, boolean batch, boolean quiet) throws IOException {
 		this.files = new ArrayList<KnownHosts>();
 		KnownHosts first = null;
-		for (File f : user) {
+		for (FileSource f : user) {
 			if( first == null || f.isFile() ) {
 				KnownHosts k = new KnownHosts(f);
 				k.setHashNewHosts(hash);
@@ -77,7 +78,7 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 				}
 			}
 		}
-		for (File f : global) {
+		for (FileSource f : global) {
 			if( f.isFile() ) {
 				try {
 					files.add(new KnownHosts(f));
@@ -246,9 +247,9 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 		}
 		if( addTo != null ) {
 			try {
-				File f = addTo.getFile();
-				if( f != null && f.getParentFile() != null && !f.getParentFile().isDirectory() ) {
-					f.getParentFile().mkdirs();
+				FileSource f = addTo.getFile();
+				if( f != null ) {
+					SshFiles.makeParentFolder(f);
 				}
 				addTo.add(host, port, key);
 				if( !quiet ) {
@@ -289,16 +290,16 @@ final class PromptingHostKeyVerifier implements IHostKeyVerifier {
 	}
 
 	/** For messages: the files looked in */
-	List<File> getFiles() {
-		List<File> ret = new ArrayList<File>();
+	List<FileSource> getFiles() {
+		List<FileSource> ret = new ArrayList<FileSource>();
 		for (KnownHosts k : files) {
 			ret.add(k.getFile());
 		}
 		return ret;
 	}
 
-	static List<File> files(SshOptions o, List<String> paths) {
-		List<File> ret = new ArrayList<File>();
+	static List<FileSource> files(SshOptions o, List<String> paths) throws IOException {
+		List<FileSource> ret = new ArrayList<FileSource>();
 		for (String p : paths) {
 			if( !p.equalsIgnoreCase("none") ) {
 				ret.add(o.file(p));

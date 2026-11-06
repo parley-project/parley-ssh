@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,7 +141,7 @@ public class SecurityKeyTest {
 			Files.write(pub.toPath(), (SshPublicKeys.toOpenSsh(k.getPublic())+" test\n").getBytes(StandardCharsets.UTF_8));
 			assertEquals(0, run("ssh-keygen", "-l", "-f", pub.getPath()), "ssh-keygen reads it");
 			assertEquals(0, run("ssh-keygen", "-q", "-s", "ca", "-I", "sk-id", "-n", "alice", "-O", "no-touch-required", pub.getPath()));
-			SshCertificate c = SshCertificate.load(new File(dir, "sk"+ed+"-cert.pub"));
+			SshCertificate c = SshCertificate.load(fs(new File(dir, "sk"+ed+"-cert.pub")));
 			assertEquals(SshCertificate.certificateType(((SkPublicKey) k.getPublic()).getType()), c.getType());
 			assertEquals(ed ? "sk-ssh-ed25519-cert-v01@openssh.com" : "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com", c.getType());
 			assertArrayEquals(SshPublicKeys.encode(k.getPublic()), c.getPublicKeyBlob());
@@ -182,7 +184,7 @@ public class SecurityKeyTest {
 	private AuthorizedKeysAuthenticator file(String... lines) throws Exception {
 		File f = new File(dir, "authorized_keys");
 		Files.write(f.toPath(), (String.join("\n", lines)+"\n").getBytes(StandardCharsets.UTF_8));
-		return AuthorizedKeysAuthenticator.forFile(f);
+		return AuthorizedKeysAuthenticator.forFile(fs(f));
 	}
 
 	@Test
@@ -294,7 +296,7 @@ public class SecurityKeyTest {
 			assertFalse(opensshLogin(port, user, new PublicKeyAuth(untouched)), "sshd refuses an untouched key too");
 			assertTrue(opensshLogin(port, user, new PublicKeyAuth(waived)), "and honours no-touch-required");
 			assertTrue(opensshLogin(port, user, new PublicKeyAuth().addCertificate(certified,
-					SshCertificate.load(new File(dir, "certified-cert.pub")))), "a security key certificate");
+					SshCertificate.load(fs(new File(dir, "certified-cert.pub"))))), "a security key certificate");
 		} finally {
 			sshd.destroy();
 			sshd.waitFor(10, TimeUnit.SECONDS);

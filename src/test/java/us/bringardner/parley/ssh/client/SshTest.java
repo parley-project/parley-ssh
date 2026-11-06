@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -181,7 +183,7 @@ public class SshTest {
 
 		File cfg = write(new File(dir, "proxy_config"), "Host t\n  ProxyCommand /usr/bin/nc  \"%h\"   %p\n  ProxyJump ignored\n");
 		o = SshOptions.parse("t");
-		new SshConfigFile(o, s -> { }).read(cfg, dir, true);
+		new SshConfigFile(o, s -> { }).read(fs(cfg), fs(dir), true);
 		o.finish();
 		assertEquals("/usr/bin/nc  \"t\"   22", o.proxyCommandLine());
 		assertTrue(o.jumpHops().isEmpty());
@@ -277,7 +279,7 @@ public class SshTest {
 				+"  IdentityFile ~/.ssh/other\n");
 		List<String> ignored = new ArrayList<String>();
 		SshOptions o = SshOptions.parse("-p", "2200", "db.work");
-		new SshConfigFile(o, ignored::add).read(cfg, dir, true);
+		new SshConfigFile(o, ignored::add).read(fs(cfg), fs(dir), true);
 		o.finish();
 		assertEquals("10.0.0.5", o.hostName);
 		assertEquals("worker", o.user, "the included file comes first");
@@ -293,7 +295,7 @@ public class SshTest {
 		assertTrue(ignored.stream().anyMatch(s -> s.contains("Match exec")), ignored.toString());
 
 		o = SshOptions.parse("pc.home");
-		new SshConfigFile(o, s -> { }).read(cfg, dir, true);
+		new SshConfigFile(o, s -> { }).read(fs(cfg), fs(dir), true);
 		o.finish();
 		assertEquals(System.getProperty("user.name"), o.user, "!*.home excludes the block");
 		assertEquals(Integer.valueOf(2299), o.port);
@@ -301,9 +303,9 @@ public class SshTest {
 
 		write(cfg, "Port abc\n");
 		SshOptions bad = SshOptions.parse("h");
-		assertThrows(SshOptions.UsageException.class, () -> new SshConfigFile(bad, s -> { }).read(cfg, dir, true));
+		assertThrows(SshOptions.UsageException.class, () -> new SshConfigFile(bad, s -> { }).read(fs(cfg), fs(dir), true));
 		// The system's file: reported, not fatal
-		new SshConfigFile(bad, s -> { }).read(cfg, dir, false);
+		new SshConfigFile(bad, s -> { }).read(fs(cfg), fs(dir), false);
 	}
 
 	@Test
@@ -321,7 +323,7 @@ public class SshTest {
 				+"Include "+dir+"/hosts/*/config\n");
 		SshOptions o = SshOptions.parse("x");
 		SshConfigFile r = new SshConfigFile(o, s -> { });
-		r.read(cfg, dir, true);
+		r.read(fs(cfg), fs(dir), true);
 		r.finish();
 		o.finish();
 		assertEquals("from-a", o.user, "wildcards in a directory name: in order");
@@ -413,7 +415,7 @@ public class SshTest {
 		s.setPasswordAuthenticator((user, pw, ctx) -> "alice".equals(user) && "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
 		File keys = new File(dir, "authorized_keys");
 		write(keys, SshPublicKeys.toOpenSsh(alicesKey.getPublic())+" alice@test\n");
-		s.setPublicKeyAuthenticator(new AuthorizedKeysAuthenticator(user -> "alice".equals(user) ? keys : null));
+		s.setPublicKeyAuthenticator(new AuthorizedKeysAuthenticator(user -> "alice".equals(user) ? fs(keys) : null));
 		s.setCommandFactory((line, env) -> command(line));
 		s.setShellFactory(env -> shell());
 		s.setForwardingFilter(ForwardingFilters.allowAll());
@@ -511,7 +513,7 @@ public class SshTest {
 		assertTrue(t.stderr().contains("Host key verification failed."), t.stderr());
 
 		// Another key for the host: refused, whatever StrictHostKeyChecking says
-		KnownHosts kh = new KnownHosts(knownHosts());
+		KnownHosts kh = new KnownHosts(fs(knownHosts()));
 		for (KeyPair hk : server.getHostKeys()) {
 			kh.add("localhost", server.getLocalPort(), otherKey(hk.getPublic()));
 		}
@@ -535,7 +537,7 @@ public class SshTest {
 
 		// A key login works, with no forwarding
 		File key = new File(dir, "id_ecdsa");
-		SshKeyWriter.write(alicesKey, key, "alice@test");
+		SshKeyWriter.write(alicesKey, fs(key), "alice@test");
 		t = new TestTerminal("");
 		assertEquals(0, run(t, args("-o", "StrictHostKeyChecking=no", "-i", key.getPath(), "-A", "-L", "0:localhost:1",
 				"alice@localhost", "whoami")), t.stderr());
@@ -561,8 +563,8 @@ public class SshTest {
 		start();
 		// The user's file has the key; a global file still has an old one: trusted (as OpenSSH)
 		File global = new File(dir, "global_known_hosts");
-		KnownHosts old = new KnownHosts(global);
-		KnownHosts current = new KnownHosts(knownHosts());
+		KnownHosts old = new KnownHosts(fs(global));
+		KnownHosts current = new KnownHosts(fs(knownHosts()));
 		for (KeyPair hk : server.getHostKeys()) {
 			old.add("localhost", server.getLocalPort(), otherKey(hk.getPublic()));
 			current.add("localhost", server.getLocalPort(), hk.getPublic());
@@ -595,7 +597,7 @@ public class SshTest {
 	public void keyFiles() throws Exception {
 		start();
 		File key = new File(dir, "id_ecdsa");
-		SshKeyWriter.write(alicesKey, key, "alice@test");
+		SshKeyWriter.write(alicesKey, fs(key), "alice@test");
 		TestTerminal t = new TestTerminal("");
 		assertEquals(0, run(t, args("-o", "StrictHostKeyChecking=accept-new", "-i", key.getPath(), "alice@localhost", "whoami")), t.stderr());
 		assertEquals("alice", t.stdout());
@@ -715,7 +717,7 @@ public class SshTest {
 		assertEquals("alice", t.stdout());
 		assertEquals(Arrays.asList("Password: ", "Password: "), t.prompts, "the jump host, then the server");
 		// The server's key is known under its own name, not the proxy's port on 127.0.0.1
-		KnownHosts kh = new KnownHosts(knownHosts());
+		KnownHosts kh = new KnownHosts(fs(knownHosts()));
 		for (KeyPair hk : server.getHostKeys()) {
 			if( kh.check("127.0.0.1", server.getLocalPort(), hk.getPublic()) == KnownHosts.Result.TRUSTED ) {
 				return;

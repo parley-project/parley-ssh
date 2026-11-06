@@ -25,7 +25,6 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -44,6 +43,7 @@ import us.bringardner.parley.core.NamedThreadFactory;
 import us.bringardner.parley.net.nio.LineFrameDecoder;
 import us.bringardner.parley.net.nio.NioServer;
 import us.bringardner.parley.net.server.ServerMain;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
@@ -75,8 +75,8 @@ import us.bringardner.parley.ssh.transport.SshTransport;
  *
  * <pre>
  * SshServer server = new SshServer(2222);
- * server.setHostKeyProvider(HostKeyProviders.generated(new File("/var/myapp/ssh")));
- * server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forHomes(new File("/home")));
+ * server.setHostKeyProvider(HostKeyProviders.generated(SshFiles.local("/var/myapp/ssh")));
+ * server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forHomes(SshFiles.local("/home")));
  * server.addSubsystem(new SftpSubsystemFactory(...));
  * server.startAndWait(10000);
  * </pre>
@@ -215,7 +215,7 @@ public class SshServer extends NioServer {
 			if( getKeyStoreFileName() != null ) {
 				p = HostKeyProviders.fromKeyStore(this);
 			} else {
-				p = HostKeyProviders.generated(new File(getProperty(propertyName(PROPERTY_HOST_KEY_DIR), ".")));
+				p = HostKeyProviders.generated(SshFiles.local(getProperty(propertyName(PROPERTY_HOST_KEY_DIR), ".")));
 			}
 		}
 		List<KeyPair> keys = p.getHostKeys();
@@ -238,7 +238,7 @@ public class SshServer extends NioServer {
 		hostCertificates = Collections.unmodifiableList(certs);
 		String revoked = getProperty(propertyName(PROPERTY_REVOKED_KEYS));
 		if( revokedKeys == null && revoked != null && !revoked.trim().isEmpty() ) {
-			revokedKeys = us.bringardner.parley.ssh.keys.KeyRevocationList.load(new File(revoked.trim()));
+			revokedKeys = us.bringardner.parley.ssh.keys.KeyRevocationList.load(SshFiles.local(revoked.trim()));
 		}
 	}
 

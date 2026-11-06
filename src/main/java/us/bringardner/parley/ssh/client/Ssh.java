@@ -27,7 +27,6 @@ package us.bringardner.parley.ssh.client;
 
 import us.bringardner.parley.core.ParleyLogger;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -38,7 +37,6 @@ import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.ArrayList;
@@ -49,7 +47,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.ISignatureAlgorithm;
 import us.bringardner.parley.ssh.algorithms.NamedFactory;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
@@ -156,7 +156,7 @@ public final class Ssh {
 			if( o.configFile.equalsIgnoreCase("none") ) {
 				return;
 			}
-			File f = o.file(o.configFile);
+			FileSource f = o.file(o.configFile);
 			if( !f.isFile() ) {
 				throw new SshOptions.UsageException("Can't open user config file "+f+": No such file or directory");
 			}
@@ -165,15 +165,15 @@ public final class Ssh {
 			reader.finish();
 			return;
 		}
-		File dotSsh = dotSsh();
-		reader.read(new File(dotSsh, "config"), dotSsh, true);
-		File etc = new File("/etc/ssh");
-		reader.read(new File(etc, "ssh_config"), etc, false);
+		FileSource dotSsh = dotSsh();
+		reader.read(dotSsh.getChild("config"), dotSsh, true);
+		FileSource etc = SshFiles.local("/etc/ssh");
+		reader.read(etc.getChild("ssh_config"), etc, false);
 		reader.finish();
 	}
 
-	private static File dotSsh() {
-		return new File(System.getProperty("user.home"), ".ssh");
+	private static FileSource dotSsh() throws IOException {
+		return SshFiles.userSshDir();
 	}
 
 	/** The library logs (to stderr): nothing unless -v, as OpenSSH's own messages are shown instead */
@@ -579,31 +579,37 @@ public final class Ssh {
 			}
 		}
 		List<KeyPair> plain = new ArrayList<KeyPair>();
-		List<List<File>> plainCerts = new ArrayList<List<File>>();
+		List<List<FileSource>> plainCerts = new ArrayList<List<FileSource>>();
 		List<IClientAuthMethod> encrypted = new ArrayList<IClientAuthMethod>();
 		for (String path : o.identityFiles) {
-			File f = o.file(path);
-			if( !f.isFile() ) {
-				if( !o.defaultIdentities ) {
-					message("Warning: Identity file "+f+" not accessible: No such file or directory.");
+			FileSource f;
+			List<FileSource> certs = new ArrayList<FileSource>();
+			try {
+				f = o.file(path);
+				if( !f.isFile() ) {
+					if( !o.defaultIdentities ) {
+						message("Warning: Identity file "+f+" not accessible: No such file or directory.");
+					}
+					continue;
 				}
+				FileSource own = SshFiles.withSuffix(f, "-cert.pub");
+				if( own.isFile() ) {
+					certs.add(own);
+				}
+				for (String c : o.certificateFiles) {
+					FileSource cf = o.file(c);
+					if( cf.isFile() && !certs.contains(cf) ) {
+						certs.add(cf);
+					}
+				}
+			} catch (IOException e) {
+				message("Load key \""+path+"\": "+message(e));
 				continue;
 			}
-			List<File> certs = new ArrayList<File>();
-			File own = new File(f.getPath()+"-cert.pub");
-			if( own.isFile() ) {
-				certs.add(own);
-			}
-			for (String c : o.certificateFiles) {
-				File cf = o.file(c);
-				if( cf.isFile() && !certs.contains(cf) ) {
-					certs.add(cf);
-				}
-			}
 			try {
-				String text = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+				String text = new String(SshFiles.readAllBytes(f), StandardCharsets.UTF_8);
 				PublicKey pub = null;
-				File pubFile = new File(f.getPath()+".pub");
+				FileSource pubFile = SshFiles.withSuffix(f, ".pub");
 				if( pubFile.isFile() ) {
 					try {
 						pub = SshKeyLoader.loadPublic(pubFile);
@@ -636,7 +642,7 @@ public final class Ssh {
 		if( !plain.isEmpty() ) {
 			PublicKeyAuth auth = new PublicKeyAuth(plain);
 			for (int i = 0; i < plain.size(); i++) {
-				for (File c : plainCerts.get(i)) {
+				for (FileSource c : plainCerts.get(i)) {
 					try {
 						auth.addCertificate(plain.get(i), SshCertificate.load(c));
 					} catch (IOException | IllegalArgumentException e) {

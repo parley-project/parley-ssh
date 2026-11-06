@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -80,14 +82,14 @@ public class KnownHostsTest {
 	public void acceptNewWritesHashedEntries() throws Exception {
 		File f = new File(dir, "ssh/known_hosts");
 		PublicKey a = ec();
-		KnownHosts kh = new KnownHosts(f).setPolicy(KnownHosts.Policy.ACCEPT_NEW);
+		KnownHosts kh = new KnownHosts(fs(f)).setPolicy(KnownHosts.Policy.ACCEPT_NEW);
 		assertTrue(kh.verify("myhost", 2200, a));
 		String text = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
 		assertTrue(text.startsWith("|1|"), "hashed: "+text);
 		assertFalse(text.contains("myhost"));
 
 		// A new reader of the file trusts the key, and only for that host and port
-		KnownHosts again = new KnownHosts(f);
+		KnownHosts again = new KnownHosts(fs(f));
 		assertEquals(Result.TRUSTED, again.check("myhost", 2200, a));
 		assertEquals(Result.UNKNOWN, again.check("myhost", 22, a));
 		assertEquals(Result.CHANGED, again.check("myhost", 2200, ec()));

@@ -25,17 +25,18 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
-import java.nio.file.Files;
 import java.nio.file.PathMatcher;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
+
+import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.ssh.SshFiles;
 
 /**
  * Reads OpenSSH client config files (ssh_config(5)) into {@link SshOptions}: Host blocks
@@ -71,18 +72,18 @@ final class SshConfigFile {
 	 * @param user false for the system file: its problems are only reported
 	 * @throws SshOptions.UsageException for a bad line in the user's file
 	 */
-	void read(File file, File includeDir, boolean user) throws IOException, SshOptions.UsageException {
+	void read(FileSource file, FileSource includeDir, boolean user) throws IOException, SshOptions.UsageException {
 		read(file, includeDir, user, true, 0);
 	}
 
-	private void read(File file, File includeDir, boolean user, boolean outerActive, int depth) throws IOException, SshOptions.UsageException {
+	private void read(FileSource file, FileSource includeDir, boolean user, boolean outerActive, int depth) throws IOException, SshOptions.UsageException {
 		if( !file.isFile() ) {
 			return;
 		}
 		if( depth > MAX_INCLUDE_DEPTH ) {
 			throw new SshOptions.UsageException(file+": Include nested too deeply");
 		}
-		List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+		List<String> lines = SshFiles.readAllLines(file);
 		// Lines before the first Host or Match apply to every host
 		boolean active = outerActive;
 		int n = 0;
@@ -111,7 +112,7 @@ final class SshConfigFile {
 				case "include":
 					if( active ) {
 						for (String pattern : args) {
-							for (File f : includes(pattern, includeDir)) {
+							for (FileSource f : includes(pattern, includeDir)) {
 								read(f, includeDir, user, true, depth+1);
 							}
 						}
@@ -206,7 +207,7 @@ final class SshConfigFile {
 		return si == s.length();
 	}
 
-	private boolean matchApplies(File file, int line, List<String> args) {
+	private boolean matchApplies(FileSource file, int line, List<String> args) {
 		boolean ret = true;
 		for (int i = 0; i < args.size(); i++) {
 			String c = args.get(i).toLowerCase(Locale.ROOT);
@@ -245,16 +246,25 @@ final class SshConfigFile {
 		return ret;
 	}
 
-	private List<File> includes(String pattern, File includeDir) {
+	private List<FileSource> includes(String pattern, FileSource includeDir) throws IOException {
 		String path = options.expand(pattern);
-		File f = new File(path);
-		if( !f.isAbsolute() ) {
-			f = new File(includeDir, path);
-		}
-		List<File> ret = new ArrayList<File>();
-		expandGlob(f.getAbsoluteFile(), ret);
+		FileSource f = isAbsolute(path)
+				? includeDir.getFileSourceFactory().createFileSource(path)
+				: includeDir.getChild(path);
+		List<FileSource> ret = new ArrayList<FileSource>();
+		expandGlob(f, ret);
 		ret.sort(null);
 		return ret;
+	}
+
+	/**
+	 * @return true for /path, and on Windows \\path and C:\path (an Include name may hold
+	 *  wildcards, which java.nio.file.Path would refuse there)
+	 */
+	static boolean isAbsolute(String path) {
+		return path.startsWith("/") || path.startsWith("\\")
+				|| (path.length() > 2 && Character.isLetter(path.charAt(0)) && path.charAt(1) == ':'
+					&& (path.charAt(2) == '\\' || path.charAt(2) == '/'));
 	}
 
 	private static boolean hasWildcard(String s) {
@@ -262,30 +272,30 @@ final class SshConfigFile {
 	}
 
 	/** The files a path with wildcards in any of its names matches */
-	private static void expandGlob(File f, List<File> out) {
-		File parent = f.getParentFile();
-		if( !hasWildcard(f.getPath()) ) {
+	private static void expandGlob(FileSource f, List<FileSource> out) throws IOException {
+		if( !hasWildcard(f.getAbsolutePath()) ) {
 			out.add(f);
 			return;
 		}
-		List<File> dirs = new ArrayList<File>();
+		FileSource parent = f.getParentFile();
 		if( parent == null ) {
 			return;
 		}
+		List<FileSource> dirs = new ArrayList<FileSource>();
 		expandGlob(parent, dirs);
 		String name = f.getName();
-		for (File d : dirs) {
+		for (FileSource d : dirs) {
 			if( !hasWildcard(name) ) {
-				out.add(new File(d, name));
+				out.add(d.getChild(name));
 				continue;
 			}
-			File[] list = d.listFiles();
+			FileSource[] list = d.isDirectory() ? d.listFiles() : null;
 			if( list == null ) {
 				continue;
 			}
 			PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:"+name);
-			for (File c : list) {
-				if( m.matches(c.toPath().getFileName()) ) {
+			for (FileSource c : list) {
+				if( m.matches(Paths.get(c.getName())) ) {
 					out.add(c);
 				}
 			}

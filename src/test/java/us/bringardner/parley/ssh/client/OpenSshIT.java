@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -135,7 +137,7 @@ public class OpenSshIT {
 		String key = System.getProperty("parley.ssh.it.key");
 		Assumptions.assumeTrue(user != null && key != null, "set parley.ssh.it.user and parley.ssh.it.key for a real login");
 		String pass = System.getProperty("parley.ssh.it.passphrase");
-		java.security.KeyPair kp = us.bringardner.parley.ssh.keys.SshKeyLoader.load(new java.io.File(key), pass == null ? null : pass.toCharArray());
+		java.security.KeyPair kp = us.bringardner.parley.ssh.keys.SshKeyLoader.load(fs(new java.io.File(key)), pass == null ? null : pass.toCharArray());
 		try (SshClient c = new SshClient()) {
 			ClientSession s = c.connectAndWait(HOST, PORT);
 			s.authPublicKey(user, kp);

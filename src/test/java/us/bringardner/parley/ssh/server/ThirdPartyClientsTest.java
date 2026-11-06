@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -55,14 +57,14 @@ public class ThirdPartyClientsTest {
 		g.initialize(new ECGenParameterSpec("secp256r1"));
 		alicesKey = g.generateKeyPair();
 		alicesKeyFile = new File(dir, "alice_key");
-		SshKeyWriter.write(alicesKey, alicesKeyFile, "alice", true);
+		SshKeyWriter.write(alicesKey, fs(alicesKeyFile), "alice", true);
 		File keys = new File(dir, "authorized_keys");
 		Files.write(keys.toPath(), (SshPublicKeys.toOpenSsh(alicesKey.getPublic())+"\n").getBytes(StandardCharsets.UTF_8));
 
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
 		server.setPasswordAuthenticator((user, pw, ctx) -> "alice".equals(user) && "secret".equals(new String(pw)) ? new SshPrincipal(user) : null);
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(keys));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
 		server.setLoginFailureDelay(10);
 		server.startAndWait(5000);

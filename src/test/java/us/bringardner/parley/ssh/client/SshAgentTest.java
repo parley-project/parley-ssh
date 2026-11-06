@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.client;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -137,7 +139,7 @@ public class SshAgentTest {
 	public void logsInWithAnAgentKey() throws Exception {
 		File keys = new File(dir, "authorized_keys");
 		Files.copy(new File(dir, "id_rsa.pub").toPath(), keys.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-		ClientSession s = connect(AuthorizedKeysAuthenticator.forFile(keys));
+		ClientSession s = connect(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		try (SshAgent a = SshAgent.connect(socket)) {
 			s.authenticateAndWait("alice", PublicKeyAuth.fromAgent(a));
 			assertEquals("alice", s.exec("whoami", null, 10000).getStdoutText());
@@ -146,7 +148,7 @@ public class SshAgentTest {
 
 	@Test
 	public void logsInWithACertificateInTheAgent() throws Exception {
-		ClientSession s = connect(UserCertificateAuthenticator.fromFile(new File(dir, "ca.pub")));
+		ClientSession s = connect(UserCertificateAuthenticator.fromFile(fs(new File(dir, "ca.pub"))));
 		try (SshAgent a = SshAgent.connect(socket)) {
 			s.authenticateAndWait("alice", PublicKeyAuth.fromAgent(a));
 			assertEquals("alice", s.exec("whoami", null, 10000).getStdoutText());
@@ -157,7 +159,7 @@ public class SshAgentTest {
 	public void noAgentKeyFits() throws Exception {
 		File keys = new File(dir, "authorized_keys_none");
 		Files.write(keys.toPath(), (SshPublicKeys.toOpenSsh(CertificateTestAccess.ec().getPublic())+"\n").getBytes(StandardCharsets.UTF_8));
-		ClientSession s = connect(AuthorizedKeysAuthenticator.forFile(keys));
+		ClientSession s = connect(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		try (SshAgent a = SshAgent.connect(socket)) {
 			assertThrows(SshException.class, () -> s.authenticateAndWait("alice", PublicKeyAuth.fromAgent(a)));
 		}

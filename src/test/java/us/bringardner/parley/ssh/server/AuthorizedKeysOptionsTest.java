@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.server;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -114,7 +116,7 @@ public class AuthorizedKeysOptionsTest {
 		Files.write(keys.toPath(), (String.join("\n", lines)+"\n").getBytes(StandardCharsets.UTF_8));
 		server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.ephemeral());
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(keys));
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(keys)));
 		server.setCommandFactory((line, env) -> ServerTest.command(line));
 		server.setForwardingFilter(ForwardingFilters.allowAll());
 		server.setLoginFailureDelay(0);

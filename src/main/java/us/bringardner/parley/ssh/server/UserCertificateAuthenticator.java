@@ -25,12 +25,9 @@
  */
 package us.bringardner.parley.ssh.server;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,8 +38,10 @@ import java.util.function.Function;
 
 import us.bringardner.parley.core.BaseObject;
 import us.bringardner.parley.core.util.AddressMatcher;
+import us.bringardner.parley.files.FileSource;
 import us.bringardner.parley.net.server.IPrincipal;
 import us.bringardner.parley.ssh.SshException;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
 
@@ -87,9 +86,9 @@ public class UserCertificateAuthenticator extends BaseObject implements IPublicK
 	/**
 	 * @param file one CA public key per line ("type base64 comment"), as OpenSSH's TrustedUserCAKeys
 	 */
-	public static UserCertificateAuthenticator fromFile(File file) throws IOException {
+	public static UserCertificateAuthenticator fromFile(FileSource file) throws IOException {
 		List<PublicKey> keys = new ArrayList<PublicKey>();
-		for (String line : Files.readAllLines(file.toPath(), StandardCharsets.UTF_8)) {
+		for (String line : SshFiles.readAllLines(file)) {
 			String l = line.trim();
 			if( !l.isEmpty() && !l.startsWith("#") ) {
 				keys.add(SshPublicKeys.fromOpenSsh(l));

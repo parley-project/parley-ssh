@@ -1,5 +1,7 @@
 package us.bringardner.parley.ssh.keys;
 
+import static us.bringardner.parley.ssh.TestFiles.fs;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -77,31 +79,31 @@ public class KeyRevocationListTest {
 		// And a list of separate serials (far apart, so not a bitmap)
 		write("spec2", "serial: 1000000\nserial: 5000000000\nserial: 2000000-3000000\n");
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-f", "krl2", "-s", "ca.pub", "spec2"));
-		KeyRevocationList krl = KeyRevocationList.load(f("krl"));
-		KeyRevocationList krl2 = KeyRevocationList.load(f("krl2"));
+		KeyRevocationList krl = KeyRevocationList.load(fs(f("krl")));
+		KeyRevocationList krl2 = KeyRevocationList.load(fs(f("krl2")));
 
 		long[] serials = {4, 5, 6, 10, 15, 20, 21, 31, 32, 33, 99, 100, 1000000, 5000000000L, 5000000001L, 1999999, 2000000, 2500000, 3000000, 3000001};
 		for (long serial : serials) {
 			File cert = f("u-cert.pub");
 			cert.delete();
 			assertEquals(0, run("ssh-keygen", "-q", "-s", "ca", "-I", "id-"+serial, "-n", "alice", "-z", ""+serial, "u.pub"));
-			SshCertificate c = SshCertificate.load(cert);
+			SshCertificate c = SshCertificate.load(fs(cert));
 			assertEquals(serial, c.getSerial());
 			assertEquals(opensshSaysRevoked("krl", "u-cert.pub"), krl.isRevoked(c), "serial "+serial);
 			assertEquals(opensshSaysRevoked("krl2", "u-cert.pub"), krl2.isRevoked(c), "serial "+serial+" (list)");
 		}
-		assertTrue(krl2.isRevoked(SshCertificate.load(f("u-cert.pub"))) == false);
+		assertTrue(krl2.isRevoked(SshCertificate.load(fs(f("u-cert.pub")))) == false);
 
 		f("u-cert.pub").delete();
 		assertEquals(0, run("ssh-keygen", "-q", "-s", "ca", "-I", "bad-id", "-n", "alice", "-z", "7", "u.pub"));
-		assertTrue(krl.isRevoked(SshCertificate.load(f("u-cert.pub"))), "by key id");
-		assertFalse(krl.isRevoked(SshPublicKeys.encode(SshKeyLoader.loadPublic(f("u.pub")))), "the plain key isn't");
+		assertTrue(krl.isRevoked(SshCertificate.load(fs(f("u-cert.pub")))), "by key id");
+		assertFalse(krl.isRevoked(SshPublicKeys.encode(SshKeyLoader.loadPublic(fs(f("u.pub"))))), "the plain key isn't");
 
 		// Another CA's certificate with a revoked serial is not revoked
 		assertEquals(0, run("ssh-keygen", "-q", "-t", "ecdsa", "-N", "", "-f", "ca2"));
 		f("u-cert.pub").delete();
 		assertEquals(0, run("ssh-keygen", "-q", "-s", "ca2", "-I", "x", "-n", "alice", "-z", "5", "u.pub"));
-		assertFalse(krl.isRevoked(SshCertificate.load(f("u-cert.pub"))));
+		assertFalse(krl.isRevoked(SshCertificate.load(fs(f("u-cert.pub")))));
 	}
 
 	@Test
@@ -110,16 +112,16 @@ public class KeyRevocationListTest {
 		assertEquals(0, run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", "bad"));
 		assertEquals(0, run("ssh-keygen", "-q", "-t", "rsa", "-N", "", "-f", "byhash"));
 		assertEquals(0, run("ssh-keygen", "-q", "-t", "ecdsa", "-N", "", "-f", "good"));
-		byte[] bad = SshPublicKeys.encode(SshKeyLoader.loadPublic(f("bad.pub")));
-		byte[] byHash = SshPublicKeys.encode(SshKeyLoader.loadPublic(f("byhash.pub")));
-		byte[] good = SshPublicKeys.encode(SshKeyLoader.loadPublic(f("good.pub")));
+		byte[] bad = SshPublicKeys.encode(SshKeyLoader.loadPublic(fs(f("bad.pub"))));
+		byte[] byHash = SshPublicKeys.encode(SshKeyLoader.loadPublic(fs(f("byhash.pub"))));
+		byte[] good = SshPublicKeys.encode(SshKeyLoader.loadPublic(fs(f("good.pub"))));
 
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-f", "keys.krl", "bad.pub"));
 		write("hashes", "hash: "+SshPublicKeys.fingerprint(byHash)+"\n");
 		write("probe", "hash: "+SshPublicKeys.fingerprint(good)+"\n");
 		assumeTrue(run("ssh-keygen", "-q", "-k", "-f", "probe.krl", "probe") == 0, "ssh-keygen before OpenSSH 7.9 has no hash: lines");
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-u", "-f", "keys.krl", "hashes"));
-		KeyRevocationList krl = KeyRevocationList.load(f("keys.krl"));
+		KeyRevocationList krl = KeyRevocationList.load(fs(f("keys.krl")));
 		assertTrue(krl.isRevoked(bad), "explicit key");
 		assertTrue(krl.isRevoked(byHash), "SHA-256 fingerprint");
 		assertFalse(krl.isRevoked(good));
@@ -127,12 +129,12 @@ public class KeyRevocationListTest {
 
 		// A certificate of a revoked key is revoked; so is every certificate of a revoked CA
 		assertEquals(0, run("ssh-keygen", "-q", "-s", "ca", "-I", "c", "-n", "alice", "bad.pub"));
-		assertTrue(krl.isRevoked(SshCertificate.load(f("bad-cert.pub"))));
+		assertTrue(krl.isRevoked(SshCertificate.load(fs(f("bad-cert.pub")))));
 		assertEquals(0, run("ssh-keygen", "-q", "-s", "ca", "-I", "c", "-n", "alice", "good.pub"));
-		SshCertificate goodCert = SshCertificate.load(f("good-cert.pub"));
+		SshCertificate goodCert = SshCertificate.load(fs(f("good-cert.pub")));
 		assertFalse(krl.isRevoked(goodCert));
 		assertEquals(0, run("ssh-keygen", "-q", "-k", "-f", "ca.krl", "ca.pub"));
-		assertTrue(KeyRevocationList.load(f("ca.krl")).isRevoked(goodCert), "its CA is revoked");
+		assertTrue(KeyRevocationList.load(fs(f("ca.krl"))).isRevoked(goodCert), "its CA is revoked");
 	}
 
 	@Test
@@ -140,7 +142,7 @@ public class KeyRevocationListTest {
 		KeyPair a = us.bringardner.parley.ssh.server.CertificateTest.ec("secp256r1");
 		KeyPair b = us.bringardner.parley.ssh.server.CertificateTest.ec("secp256r1");
 		write("revoked", "# revoked\n"+SshPublicKeys.toOpenSsh(a.getPublic())+" old laptop\n");
-		KeyRevocationList list = KeyRevocationList.load(f("revoked"));
+		KeyRevocationList list = KeyRevocationList.load(fs(f("revoked")));
 		assertTrue(list.isRevoked(SshPublicKeys.encode(a.getPublic())));
 		assertFalse(list.isRevoked(SshPublicKeys.encode(b.getPublic())));
 		// Changed: read again
@@ -163,9 +165,9 @@ public class KeyRevocationListTest {
 		write("revoked", SshPublicKeys.toOpenSsh(bad.getPublic())+"\n");
 		SshServer server = new SshServer(0);
 		server.setHostKeyProvider(HostKeyProviders.of(hostKey));
-		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(f("authorized_keys"))
+		server.setPublicKeyAuthenticator(AuthorizedKeysAuthenticator.forFile(fs(f("authorized_keys")))
 				.or(new UserCertificateAuthenticator(Collections.singletonList(ca.getPublic()))));
-		server.setRevokedKeys(KeyRevocationList.load(f("revoked")));
+		server.setRevokedKeys(KeyRevocationList.load(fs(f("revoked"))));
 		server.setLoginFailureDelay(0);
 		server.startAndWait(5000);
 		try (SshClient client = new SshClient()) {
@@ -184,7 +186,7 @@ public class KeyRevocationListTest {
 			// Client side: the host key is revoked
 			write("revoked_hosts", SshPublicKeys.toOpenSsh(hostKey.getPublic())+"\n");
 			client.setHostKeyVerifier(new KnownHosts(Collections.<String>emptyList()).setPolicy(KnownHosts.Policy.ACCEPT)
-					.setRevokedHostKeys(KeyRevocationList.load(f("revoked_hosts"))));
+					.setRevokedHostKeys(KeyRevocationList.load(fs(f("revoked_hosts")))));
 			assertThrows(java.io.IOException.class, () -> client.connectAndWait("localhost", server.getLocalPort()));
 		} finally {
 			server.stop(5000, false);

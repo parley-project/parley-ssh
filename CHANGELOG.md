@@ -2,6 +2,21 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-06: files are FileSources)
+
+- **Key, certificate, known_hosts, authorized_keys, KRL and config files are parley-files `FileSource`s**, not
+  `java.io.File`s: `SshCertificate.load`, `SshKeyLoader.load` and `loadPublic`, `SshKeyWriter.write`,
+  `KeyRevocationList.load`, `KnownHosts(FileSource)` and `getFile()`, `AuthorizedKeysAuthenticator` (its constructor's
+  function, `forHomes` and `forFile`), `UserCertificateAuthenticator.fromFile`, `HostKeyProviders.fromFiles` and
+  `generated`, and `SshAgent.identityAgent`. They can come from any file system parley-files reaches; paths parley-ssh
+  works out itself (`~/.ssh`, `hostKeyDir`, `homes`, the service's folders) are on the local disk, from the new
+  `SshFiles.local`, never from `FileSourceFactory.getDefaultFactory()`.
+- **parley-files is a dependency**, no longer optional: the service's SFTP no longer checks that it is on the class path.
+- A private key on the local disk is still created owner-only in one step (parley-core's `PrivateKeys`); on another
+  file system it is created, its permissions set, and then written.
+- Still `java.io.File`, because the operating system needs a local path: a command's or shell's working folder
+  (`ProcessCommandFactory`, `ProcessShellFactory`), `/dev/tty`, and the Windows agent's named pipe.
+
 ### Changed (2026-11-02: logins when the user list can't answer, To-Do 3.5)
 
 - **A login the access control list can't check is disconnected with "service not available"** ("Can't check logins

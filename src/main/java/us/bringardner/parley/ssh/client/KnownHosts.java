@@ -25,11 +25,8 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.PublicKey;
@@ -45,6 +42,8 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import us.bringardner.parley.core.BaseObject;
+import us.bringardner.parley.files.FileSource;
+import us.bringardner.parley.ssh.SshFiles;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
 import us.bringardner.parley.ssh.algorithms.SshCertificate;
 import us.bringardner.parley.ssh.algorithms.SshPublicKeys;
@@ -107,7 +106,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 		}
 	}
 
-	private final File file;
+	private final FileSource file;
 	private volatile Policy policy = Policy.REJECT;
 	private volatile boolean hashNewHosts = true;
 	private volatile List<Entry> entries = Collections.emptyList();
@@ -117,7 +116,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 	/**
 	 * @param file the known_hosts file (it need not exist)
 	 */
-	public KnownHosts(File file) throws IOException {
+	public KnownHosts(FileSource file) throws IOException {
 		this.file = file;
 		reload();
 	}
@@ -134,7 +133,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 	 * @return ~/.ssh/known_hosts
 	 */
 	public static KnownHosts userFile() throws IOException {
-		return new KnownHosts(new File(System.getProperty("user.home"), ".ssh"+File.separator+"known_hosts"));
+		return new KnownHosts(SshFiles.userSshDir().getChild("known_hosts"));
 	}
 
 	public Policy getPolicy() {
@@ -168,7 +167,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 		return this;
 	}
 
-	public File getFile() {
+	public FileSource getFile() {
 		return file;
 	}
 
@@ -177,7 +176,7 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 	 */
 	public synchronized void reload() throws IOException {
 		if( file != null && file.exists() ) {
-			entries = parse(Files.readAllLines(file.toPath(), StandardCharsets.UTF_8));
+			entries = parse(SshFiles.readAllLines(file));
 		} else {
 			entries = Collections.emptyList();
 		}
@@ -380,12 +379,8 @@ public class KnownHosts extends BaseObject implements IHostKeyVerifier {
 		tmp.addAll(parse(Collections.singletonList(line)));
 		entries = Collections.unmodifiableList(tmp);
 		if( file != null ) {
-			File dir = file.getParentFile();
-			if( dir != null && !dir.exists() && !dir.mkdirs() ) {
-				throw new IOException("Can't create "+dir);
-			}
-			Files.write(file.toPath(), (line+System.lineSeparator()).getBytes(StandardCharsets.UTF_8),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			SshFiles.makeParentFolder(file);
+			SshFiles.append(file, (line+System.lineSeparator()).getBytes(StandardCharsets.UTF_8));
 		}
 	}
 

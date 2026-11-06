@@ -66,12 +66,13 @@ Requires Java 11 or later. Some features need more: Ed25519 needs Java 15, and S
 </dependency>
 ```
 
-Depends on `parley-net` (which brings in `parley-core` and `parley-io`). Optional dependencies, added
-by you when you need them:
+Depends on `parley-net` (which brings in `parley-core` and `parley-io`) and `parley-files`: key,
+certificate, known_hosts, authorized_keys and config files are `FileSource`s, and the SFTP server
+(`us.bringardner.parley.ssh.sftp.server`) serves `FileSource` file systems. Optional dependencies,
+added by you when you need them:
 
 | Dependency | For |
 |---|---|
-| `us.bringardner.parley:parley-files` | The SFTP server (`us.bringardner.parley.ssh.sftp.server`) |
 | `org.jetbrains.pty4j:pty4j` | Pseudo terminals for operating system commands and shells |
 
 > parley-ssh was previously `us.bringardner:bjl_net_ssh` (BjlSsh), with packages under
@@ -308,7 +309,7 @@ command line and a settings file (the command line wins), then it sets the serve
 `CONF` is the folder of Parley's administrator file: `/etc/parley` (Windows `%ProgramData%\Parley`),
 or the folder of the file the `PARLEY_CONF` environment variable names. Users log in with a password
 (the access control list), a key in `HOMES/USER/.ssh/authorized_keys`, or a certificate signed by a
-trusted CA. With parley-files on the class path, SFTP puts each user in their home: the access
+trusted CA. SFTP puts each user in their home: the access
 control list's `userRoot` parameter (the one FTP uses), else `HOMES/USER`; a user with neither
 folder gets no SFTP. The shell is fsh when it is on the class path (`shellFactory`).
 
