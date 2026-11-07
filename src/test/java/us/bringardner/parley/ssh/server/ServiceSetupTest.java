@@ -221,9 +221,9 @@ public class ServiceSetupTest {
 	public void sftpRoot() throws Exception {
 		File h = new File("/home");
 		us.bringardner.parley.iam.EntityId id = us.bringardner.parley.iam.EntityId.of("user:frank");
-		us.bringardner.parley.iam.ParleyPrincipal p = us.bringardner.parley.iam.BasicParleyPrincipal.user(id, "frank");
+		us.bringardner.parley.iam.ParleyPrincipal p = us.bringardner.parley.iam.principal.BasicParleyPrincipal.user(id, "frank");
 		assertEquals(fs(new File(h, "frank")), SftpSetup.rootOf(p, "frank", fs(h)));
-		p = new us.bringardner.parley.iam.BasicParleyPrincipal(id, "frank", false,
+		p = new us.bringardner.parley.iam.principal.BasicParleyPrincipal(id, "frank", false,
 				Collections.singletonMap(SftpSetup.PARAMETER_USER_ROOT, "/srv/frank"));
 		assertEquals(fs(new File("/srv/frank")), SftpSetup.rootOf(p, "frank", fs(h)), "the principal's userRoot, as FTP");
 		assertNull(SftpSetup.rootOf(null, "..", fs(h)));

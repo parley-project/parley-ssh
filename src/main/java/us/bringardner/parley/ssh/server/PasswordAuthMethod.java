@@ -31,7 +31,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-import us.bringardner.parley.iam.PasswordCredential;
+import us.bringardner.parley.iam.credential.PasswordCredential;
 import us.bringardner.parley.ssh.SshBuffer;
 
 /**

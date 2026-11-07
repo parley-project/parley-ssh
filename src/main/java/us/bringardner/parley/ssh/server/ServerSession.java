@@ -37,10 +37,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import us.bringardner.parley.iam.AuthenticationResult;
 import us.bringardner.parley.iam.AuthorizationResult;
-import us.bringardner.parley.iam.BasicParleyPermission;
 import us.bringardner.parley.iam.Credential;
 import us.bringardner.parley.iam.ParleyPrincipal;
 import us.bringardner.parley.iam.Requester;
+import us.bringardner.parley.iam.permission.BasicParleyPermission;
 import us.bringardner.parley.net.nio.INioConnection;
 import us.bringardner.parley.net.nio.NioConnection;
 import us.bringardner.parley.ssh.SshBuffer;

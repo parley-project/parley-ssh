@@ -29,9 +29,9 @@ import java.io.IOException;
 import java.security.PublicKey;
 
 import us.bringardner.parley.iam.AuthenticationResult;
-import us.bringardner.parley.iam.ProofCredential;
 import us.bringardner.parley.iam.ProofVerifier;
 import us.bringardner.parley.iam.StoredCredentialType;
+import us.bringardner.parley.iam.credential.ProofCredential;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
