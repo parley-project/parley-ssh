@@ -2,6 +2,11 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-07: parley-net's LoginSession)
+
+- **Too many refused logins are asked of the session** (parley-net's `LoginSession.isTooManyLoginFailures()`), not of
+  `NioConnection` with `instanceof`.
+
 ### Changed (2026-11-06: users, logins and permissions come from parley-iam)
 
 - **parley-ssh uses parley-iam and the new parley-net**: the server's user registry (`authenticationProvider` or

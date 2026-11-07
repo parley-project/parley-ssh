@@ -42,7 +42,6 @@ import us.bringardner.parley.iam.ParleyPrincipal;
 import us.bringardner.parley.iam.Requester;
 import us.bringardner.parley.iam.permission.BasicParleyPermission;
 import us.bringardner.parley.net.nio.INioConnection;
-import us.bringardner.parley.net.nio.NioConnection;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
@@ -457,7 +456,7 @@ public class ServerSession extends SshTransport {
 	private void failed(String name) throws IOException {
 		logDebug(() -> "Authentication failure for "+name+" from "+getConnection().getRemoteAddress());
 		INioConnection c = getConnection();
-		if( c instanceof NioConnection && ((NioConnection) c).isTooManyLoginFailures() ) {
+		if( c.isTooManyLoginFailures() ) {
 			// no USERAUTH_FAILURE: the DISCONNECT follows once the delay has passed
 			return;
 		}
