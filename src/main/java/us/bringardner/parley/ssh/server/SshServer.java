@@ -298,8 +298,9 @@ public class SshServer extends NioServer {
 	 * by its own verifier, which checks the key with the public key authenticator
 	 * (authorized_keys, trusted certificate authorities) and the signature; the stored secret it
 	 * is given is an empty list, since the user's keys are not the registry's. The user then
-	 * comes from the user registry ({@link UserRegistry#findPrincipal(String)}): a key for a user
-	 * the registry doesn't know is refused, and a registry that can't answer is UNAVAILABLE.
+	 * comes from the user registry ({@link UserRegistry#findUser(String)}): a key for a user
+	 * the registry doesn't know, or for a group's name, is refused, and a registry that can't
+	 * answer is UNAVAILABLE.
 	 * Every other credential goes to the registry as the framework sends it.
 	 *
 	 * @throws IllegalStateException when the server has no user registry
@@ -354,7 +355,8 @@ public class SshServer extends NioServer {
 			if( !proven ) {
 				result = AuthenticationResult.refused("publickey not accepted for "+user);
 			} else {
-				ParleyPrincipal principal = registry.findPrincipal(user);
+				// a group doesn't log in, even one with keys
+				ParleyPrincipal principal = registry.findUser(user);
 				result = principal == null ? AuthenticationResult.refused("no user "+user)
 						: AuthenticationResult.authenticated(principal, PublicKeyAuthMethod.NAME);
 			}
