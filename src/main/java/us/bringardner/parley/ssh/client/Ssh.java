@@ -272,7 +272,7 @@ public final class Ssh {
 	 * @param hops how many jump hosts lead here
 	 */
 	private ClientSession open(SshOptions o, int hops) throws Failed, IOException {
-		PrintStream err = terminal.err();
+		//PrintStream err = terminal.err();
 		// The session it makes, so a proxy bridge knows our connection's port
 		java.util.concurrent.atomic.AtomicReference<ClientSession> made = new java.util.concurrent.atomic.AtomicReference<ClientSession>();
 		SshClient client = new SshClient() {

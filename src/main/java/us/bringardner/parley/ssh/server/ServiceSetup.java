@@ -79,10 +79,13 @@ final class ServiceSetup {
 		this.mac = mac;
 	}
 
-	/** For this machine: Parley's administrator folder (ServerMain.confDir) and the operating system */
+	/**
+	 * For this machine: Parley's administrator folder (ServerMain.confDir, on the default file system,
+	 * where the settings file is found too) and the operating system
+	 */
 	static ServiceSetup forThisMachine() throws IOException {
 		String os = System.getProperty("os.name", "").toLowerCase();
-		return new ServiceSetup(SshFiles.local(ServerMain.confDir().getPath()), os.startsWith("windows"), os.startsWith("mac"));
+		return new ServiceSetup(ServerMain.confDir(), os.startsWith("windows"), os.startsWith("mac"));
 	}
 
 	FileSource getConfDir() {
