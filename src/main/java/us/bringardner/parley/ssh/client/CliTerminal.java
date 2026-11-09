@@ -42,6 +42,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
+import us.bringardner.parley.files.FileSourceFactory;
+
 /**
  * What {@link Ssh} needs from the terminal it runs in: its streams, whether stdin is a
  * terminal, raw mode and the window size for a remote pseudo terminal, and prompts for
@@ -99,7 +101,7 @@ abstract class CliTerminal {
 
 	static final class SystemTerminal extends CliTerminal {
 
-		private static final boolean WINDOWS = File.separatorChar == '\\';
+		
 		private static final File DEV_TTY = new File("/dev/tty");
 
 		private final InputStream in = new FileInputStream(FileDescriptor.in);
@@ -143,7 +145,7 @@ abstract class CliTerminal {
 		@Override
 		synchronized boolean stdinIsTerminal() {
 			if( stdinTerminal == null ) {
-				if( WINDOWS ) {
+				if( FileSourceFactory.isWindows() ) {
 					stdinTerminal = console() != null;
 				} else {
 					// stty works only on a terminal: run it on our stdin
@@ -155,7 +157,7 @@ abstract class CliTerminal {
 
 		@Override
 		synchronized boolean enterRawMode() {
-			if( WINDOWS || saved != null ) {
+			if( FileSourceFactory.isWindows() || saved != null ) {
 				return saved != null;
 			}
 			String s = stty(false, "-g");
@@ -182,7 +184,7 @@ abstract class CliTerminal {
 
 		@Override
 		int[] size() {
-			if( WINDOWS ) {
+			if( FileSourceFactory.isWindows() ) {
 				return null;
 			}
 			String s = stty(false, "size");
@@ -208,7 +210,7 @@ abstract class CliTerminal {
 
 		@Override
 		void onResize(Runnable listener) {
-			if( WINDOWS ) {
+			if( FileSourceFactory.isWindows() ) {
 				return;
 			}
 			// sun.misc.Signal (jdk.unsupported), by reflection: it may not be there
@@ -241,7 +243,7 @@ abstract class CliTerminal {
 				return c.readPassword("%s", prompt);
 			}
 			// stdin or stdout is redirected: ask on the terminal itself
-			if( !WINDOWS && DEV_TTY.canRead() && DEV_TTY.canWrite() ) {
+			if( !FileSourceFactory.isWindows() && DEV_TTY.canRead() && DEV_TTY.canWrite() ) {
 				try {
 					return devTty(prompt, echo);
 				} catch (IOException e) {

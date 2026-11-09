@@ -219,6 +219,7 @@ public class SshTest {
 		assertNull(o.proxyCommand);
 	}
 
+	@SuppressWarnings("resource")
 	@Test
 	public void bridgeTakesOnlyOurConnection() throws Exception {
 		assumeTrue(new File("/bin/sh").canExecute(), "no shell");
@@ -768,6 +769,7 @@ public class SshTest {
 		}
 	}
 
+	@SuppressWarnings("resource")
 	@Test
 	public void localForwarding() throws Exception {
 		start();
