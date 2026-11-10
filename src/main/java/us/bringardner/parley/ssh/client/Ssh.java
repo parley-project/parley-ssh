@@ -25,7 +25,7 @@
  */
 package us.bringardner.parley.ssh.client;
 
-import us.bringardner.parley.core.ParleyLogger;
+import us.bringardner.parley.core.BaseObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -176,19 +176,25 @@ public final class Ssh {
 		return SshFiles.userSshDir();
 	}
 
-	/** The library logs (to stderr): nothing unless -v, as OpenSSH's own messages are shown instead */
+	/**
+	 * The library logs (to stderr): nothing unless -v, as OpenSSH's own messages are shown instead.
+	 * The level is BaseObject's ({@value BaseObject#PROPERTY_LOG_LEVEL}); the messages it lets through
+	 * are written by the installed System.Logger (parley-logging's ParleyLogger in pssh's package).
+	 */
 	private static void setLogging(SshOptions o) {
-		if( System.getProperty(ParleyLogger.PROPERTY_LOG_FILE) == null ) {
-			System.setProperty(ParleyLogger.PROPERTY_LOG_FILE, "System.err");
+		// parley-logging's log file setting (not a constant: parley-ssh doesn't read it, KnownSettings)
+		String logFile = "parley.log.file";
+		if( System.getProperty(logFile) == null ) {
+			System.setProperty(logFile, "System.err");
 		}
-		if( System.getProperty(ParleyLogger.PROPERTY_LOG_LEVEL) == null ) {
+		if( System.getProperty(BaseObject.PROPERTY_LOG_LEVEL) == null ) {
 			String level = "NONE";
 			if( o.verbose >= 2 || o.logLevel.startsWith("DEBUG") ) {
 				level = "DEBUG";
 			} else if( o.verbose == 1 || o.logLevel.equals("VERBOSE") ) {
 				level = "INFO";
 			}
-			System.setProperty(ParleyLogger.PROPERTY_LOG_LEVEL, level);
+			System.setProperty(BaseObject.PROPERTY_LOG_LEVEL, level);
 		}
 	}
 

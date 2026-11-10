@@ -158,7 +158,6 @@ public class SftpClient extends BaseObject implements Closeable {
 	}
 
 	private SftpClient() {
-		getLogger().setLevel(Server.getDefaultLogLevel());
 	}
 
 	/**
