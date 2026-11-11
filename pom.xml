@@ -24,7 +24,6 @@
 		<!-- Written to the jar manifest as Automatic-Module-Name (was us.bringardner.net.ssh) -->
 		<parley.moduleName>us.bringardner.parley.ssh</parley.moduleName>
 		<junit.version>5.11.4</junit.version>
-		<log4j.version>2.24.3</log4j.version>
 		<jacoco.version>0.8.15</jacoco.version>
 	</properties>
 
@@ -192,20 +191,6 @@
 			<artifactId>pty4j</artifactId>
 			<version>0.14.0</version>
 			<optional>true</optional>
-		</dependency>
-		<!-- log4j is only used for testing, Log4JLogger accesses it by reflection at runtime.
-		     2.13.2 was vulnerable to Log4Shell (CVE-2021-44228). -->
-		<dependency>
-			<groupId>org.apache.logging.log4j</groupId>
-			<artifactId>log4j-api</artifactId>
-			<version>${log4j.version}</version>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.logging.log4j</groupId>
-			<artifactId>log4j-core</artifactId>
-			<version>${log4j.version}</version>
-			<scope>test</scope>
 		</dependency>
 		<!-- Apache MINA SSHD as the peer in interop tests (an embedded server); test scope only -->
 		<dependency>

@@ -2,6 +2,14 @@
 
 ## parley-ssh 2.0.0 (unreleased)
 
+### Changed (2026-11-10: logging through System.Logger, To-Do 19.5)
+
+- **Logging through `System.Logger`** (parley-core): `SshClient`, `SshTransport`, `ConnectionService`
+  and `SftpClient` no longer set parley-net's default level (NONE, removed) when made; levels are set
+  per object with `setLogLevel`. pssh (`client.Ssh`) still sets `parley.log.file=System.err` and `parley.log.level` from `-v`; its
+  package includes parley-logging, which writes them (parley-ssh, a library, doesn't depend on it).
+  log4j is no longer a test dependency.
+
 ### Changed (2026-11-07: parley-net's LoginSession)
 
 - **Too many refused logins are asked of the session** (parley-net's `LoginSession.isTooManyLoginFailures()`), not of

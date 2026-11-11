@@ -160,7 +160,6 @@ public abstract class SshTransport extends BaseObject implements INioHandler {
 		this.random = random;
 		this.decoder = new SshPacketDecoder();
 		this.encoder = new SshPacketEncoder(random);
-		getLogger().setLevel(Server.getDefaultLogLevel());
 	}
 
 	// ------------------------------------------------------------------ for subclasses

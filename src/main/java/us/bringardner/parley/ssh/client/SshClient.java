@@ -42,7 +42,6 @@ import us.bringardner.parley.core.BaseObject;
 import us.bringardner.parley.core.NamedThreadFactory;
 import us.bringardner.parley.net.nio.LineFrameDecoder;
 import us.bringardner.parley.net.nio.NioClient;
-import us.bringardner.parley.net.server.Server;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.algorithms.SshAlgorithms;
 import us.bringardner.parley.ssh.transport.SshTransport;
@@ -79,7 +78,6 @@ public class SshClient extends BaseObject implements Closeable {
 	private volatile long keepAliveInterval;
 
 	public SshClient() {
-		getLogger().setLevel(Server.getDefaultLogLevel());
 		nio = new NioClient("SshClient");
 		// SSH encrypts itself: never TLS, whatever a "secure" property says
 		nio.setSecure(false);

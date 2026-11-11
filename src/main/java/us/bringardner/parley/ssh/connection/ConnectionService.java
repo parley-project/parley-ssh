@@ -38,7 +38,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import us.bringardner.parley.core.BaseObject;
-import us.bringardner.parley.net.server.Server;
 import us.bringardner.parley.ssh.SshBuffer;
 import us.bringardner.parley.ssh.SshConstants;
 import us.bringardner.parley.ssh.SshException;
@@ -74,7 +73,6 @@ public class ConnectionService extends BaseObject {
 
 	public ConnectionService(SshTransport transport) {
 		this.transport = transport;
-		getLogger().setLevel(Server.getDefaultLogLevel());
 	}
 
 	public SshTransport getTransport() {
