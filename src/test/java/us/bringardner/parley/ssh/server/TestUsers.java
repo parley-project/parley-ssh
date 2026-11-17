@@ -27,6 +27,7 @@ package us.bringardner.parley.ssh.server;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -81,6 +82,12 @@ public class TestUsers implements UserRegistry {
 		return ret;
 	}
 
+	  @Override
+	    public Set<ParleyPrincipal> findByAttribute(String name, Object value) {
+		  	Set<ParleyPrincipal> found = new LinkedHashSet<ParleyPrincipal>();
+	        return found;
+	   }
+	  
 	/** @return this, without these permissions for anyone */
 	public TestUsers deny(String... permissions) {
 		for (String p : permissions) {
