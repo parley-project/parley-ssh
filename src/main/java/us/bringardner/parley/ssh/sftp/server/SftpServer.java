@@ -433,6 +433,28 @@ public class SftpServer extends AbstractCommand {
 		}
 	}
 
+	/**
+	 * What a link leads to (the file itself if it isn't a link), as the system follows it. A FileSource
+	 * answers for a link itself (its own length, mode, owner and times), so a request that follows
+	 * links, like STAT and SETSTAT, takes the file at the end. A link that leads nowhere gives a
+	 * file that doesn't exist, and a loop of links the last file in it.
+	 */
+	private static FileSource followLinks(FileSource f) {
+		for(int hops = 0; hops < MAX_LINKS; hops++) {
+			FileSource next;
+			try {
+				next = f.getLinkedTo();
+			} catch (IOException | RuntimeException e) {
+				return f;
+			}
+			if( next == null ) {
+				return f;
+			}
+			f = next;
+		}
+		return f;
+	}
+
 	private static boolean isLink(FileSource f) {
 		try {
 			return f.getLinkedTo() != null;
@@ -579,7 +601,7 @@ public class SftpServer extends AbstractCommand {
 	}
 
 	private void setStat(int id, SshBuffer p) throws IOException {
-		FileSource f = followed(p.getStringUtf8());
+		FileSource f = followLinks(followed(p.getStringUtf8()));
 		SftpAttrs a = SftpAttrs.read(p, version);
 		writable();
 		if( !f.exists() ) {
@@ -598,7 +620,7 @@ public class SftpServer extends AbstractCommand {
 		FileHandle h = fileHandle(p.getString());
 		SftpAttrs a = SftpAttrs.read(p, version);
 		writable();
-		apply(id, h.file, h.raf, a);
+		apply(id, followLinks(h.file), h.raf, a);
 	}
 
 	private void apply(int id, FileSource f, IRandomAccessStream raf, SftpAttrs a) throws IOException {
@@ -1023,22 +1045,26 @@ public class SftpServer extends AbstractCommand {
 	// ------------------------------------------------------------------ attributes
 
 	private SftpAttrs attributes(FileSource f, boolean follow) throws IOException {
-		if( !follow && isLink(f) ) {
-			long mtime = 0;
-			try {
-				mtime = f.lastModified()/1000;
-			} catch (IOException | RuntimeException e) {
-				// a dangling link
-			}
-			return SftpAttrs.NONE.withSize(0).withPermissions(S_IFLNK | 0777).withTimes(mtime, mtime);
+		boolean link = isLink(f);
+		if( link && follow ) {
+			f = followLinks(f);   // STAT: what the link leads to
+			link = false;
 		}
-		if( !f.exists() ) {
+		// LSTAT: a link answers for itself, as lstat does: its own length (its text), mode, owner and times
+		if( !link && !f.exists() ) {
 			throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
 		}
-		boolean dir = f.isDirectory();
-		int mode = (dir ? S_IFDIR : S_IFREG) | permissionBits(f);
+		boolean dir = !link && f.isDirectory();
+		int mode = (link ? S_IFLNK : dir ? S_IFDIR : S_IFREG) | permissionBits(f);
 		long size = dir ? 0 : f.length();
-		long mtimeMs = f.lastModified();
+		long mtimeMs = 0;
+		try {
+			mtimeMs = f.lastModified();
+		} catch (IOException | RuntimeException e) {
+			if( !link ) {
+				throw e;
+			}
+		}
 		long atimeMs = mtimeMs;
 		try {
 			long a = f.lastAccessTime();
