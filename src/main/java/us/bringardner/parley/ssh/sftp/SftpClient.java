@@ -368,6 +368,16 @@ public class SftpClient extends BaseObject implements Closeable {
 		checkStatus(call(SftpConstants.SSH_FXP_SETSTAT, attrs.write(path(path), ver), path), path);
 	}
 
+	/**
+	 * Change the attributes of the path itself: a symbolic link is not followed (lsetstat@openssh.com,
+	 * as chown -h and touch -h). Only the fields set in attrs change.
+	 *
+	 * @throws SftpException SSH_FX_OP_UNSUPPORTED if the server doesn't list the extension
+	 */
+	public void lsetStat(String path, SftpAttrs attrs) throws IOException {
+		extended(SftpConstants.EXT_LSETSTAT, attrs.write(path(path), ver), path);
+	}
+
 	public void fsetStat(SftpHandle handle, SftpAttrs attrs) throws IOException {
 		checkStatus(call(SftpConstants.SSH_FXP_FSETSTAT, attrs.write(new SshBuffer().putString(handle.id()), ver), handle.getPath()), handle.getPath());
 	}

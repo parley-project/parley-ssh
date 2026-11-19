@@ -152,6 +152,8 @@ public final class SftpConstants {
 	/** OpenSSH extensions (PROTOCOL in the OpenSSH sources) */
 	public static final String EXT_POSIX_RENAME = "posix-rename@openssh.com";
 	public static final String EXT_HARDLINK = "hardlink@openssh.com";
+	/** SETSTAT that doesn't follow a symbolic link: its own owner and times (OpenSSH PROTOCOL 3.7) */
+	public static final String EXT_LSETSTAT = "lsetstat@openssh.com";
 	public static final String EXT_FSYNC = "fsync@openssh.com";
 	public static final String EXT_STATVFS = "statvfs@openssh.com";
 	/** Version negotiation (draft 13, 5.5): the versions a server speaks, sent with version 3 */

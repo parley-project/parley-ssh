@@ -282,6 +282,7 @@ public class SftpServer extends AbstractCommand {
 			SshBuffer b = new SshBuffer().putByte(SftpConstants.SSH_FXP_VERSION).putInt(version);
 			b.putString(SftpConstants.EXT_POSIX_RENAME).putString("1");
 			b.putString(SftpConstants.EXT_HARDLINK).putString("1");
+			b.putString(SftpConstants.EXT_LSETSTAT).putString("1");
 			b.putString(SftpConstants.EXT_FSYNC).putString("1");
 			if( version == SftpConstants.SFTP_VERSION ) {
 				// A client that started with 3 may select a later one (draft 13, 5.5)
@@ -621,6 +622,33 @@ public class SftpServer extends AbstractCommand {
 		SftpAttrs a = SftpAttrs.read(p, version);
 		writable();
 		apply(id, followLinks(h.file), h.raf, a);
+	}
+
+	/**
+	 * LSETSTAT (OpenSSH's lsetstat@openssh.com): SETSTAT that doesn't follow a symbolic link, so a
+	 * link's own times change. As on Linux, a link has no mode of its own to change (lchmod), the
+	 * size is the file's, and this service has no owners to give: those are unsupported. Anything
+	 * that is not a link is as for SETSTAT.
+	 */
+	private void lsetStat(int id, FileSource f, SftpAttrs a) throws IOException {
+		writable();
+		if( !isLink(f) ) {
+			if( !f.exists() ) {
+				throw new Status(SftpConstants.SSH_FX_NO_SUCH_FILE, "No such file");
+			}
+			apply(id, f, null, a);
+			return;
+		}
+		if( a.hasSize() || a.hasPermissions() || a.hasOwner() || a.hasOwnerNames() ) {
+			throw new Status(SftpConstants.SSH_FX_OP_UNSUPPORTED, "A link's own size, mode and owner can't be changed");
+		}
+		if( a.hasAccessTime() ) {
+			f.setLastAccessTime(a.getAccessTime()*1000+a.getAccessTimeNanos()/1000000);
+		}
+		if( a.hasModifyTime() ) {
+			f.setLastModifiedTime(a.getModifyTime()*1000+a.getModifyTimeNanos()/1000000);
+		}
+		ok(id);
 	}
 
 	private void apply(int id, FileSource f, IRandomAccessStream raf, SftpAttrs a) throws IOException {
@@ -1030,6 +1058,11 @@ public class SftpServer extends AbstractCommand {
 		case SftpConstants.EXT_HARDLINK: {
 			String existing = p.getStringUtf8();
 			hardlink(id, existing, p.getStringUtf8());
+			return;
+		}
+		case SftpConstants.EXT_LSETSTAT: {
+			FileSource f = notFollowed(p.getStringUtf8());
+			lsetStat(id, f, SftpAttrs.read(p, version));
 			return;
 		}
 		case SftpConstants.EXT_FSYNC:
