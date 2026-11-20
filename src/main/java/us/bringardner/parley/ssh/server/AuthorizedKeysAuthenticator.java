@@ -255,8 +255,8 @@ public class AuthorizedKeysAuthenticator extends BaseObject implements IPublicKe
 
 	private List<Entry> entries(FileSource f) throws IOException {
 		String path = f.getCanonicalPath();
-		long modified = f.lastModified();
-		long size = f.length();
+		long modified = f.contentLastModified();
+		long size = f.contentLength();
 		Cached c = cache.get(path);
 		if( c != null && c.modified == modified && c.size == size ) {
 			return c.entries;

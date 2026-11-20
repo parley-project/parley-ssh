@@ -124,8 +124,8 @@ public final class KeyRevocationList {
 		this.file = file;
 		this.state = state;
 		if( file != null ) {
-			this.modified = file.lastModified();
-			this.size = file.length();
+			this.modified = file.contentLastModified();
+			this.size = file.contentLength();
 		}
 	}
 
@@ -149,7 +149,7 @@ public final class KeyRevocationList {
 	 */
 	private boolean changed(FileSource f) {
 		try {
-			return f.lastModified() != modified || f.length() != size;
+			return f.contentLastModified() != modified || f.contentLength() != size;
 		} catch (IOException e) {
 			return true;
 		}
@@ -161,8 +161,8 @@ public final class KeyRevocationList {
 			synchronized (this) {
 				if( changed(f) ) {
 					try {
-						long m = f.lastModified();
-						long s = f.length();
+						long m = f.contentLastModified();
+						long s = f.contentLength();
 						state = parse(SshFiles.readAllBytes(f));
 						modified = m;
 						size = s;
